@@ -36,6 +36,8 @@ COST_UNMET_WANT = 10  # 「入りたい」を落とす
 COST_FORCED_AVOID = 6  # 「できれば避けたい」に入れる
 COST_UNDER_MIN_HOURS = 3  # 契約の下限時間に届かない（1時間あたり）
 COST_UNFAIR = 1  # 人による総時間の偏り（1時間あたり）
+COST_AGAINST_LOAD = 4  # 「控えめに」と言っている人に入れる（1時間あたり）
+BONUS_WITH_LOAD = 2  # 「もっと入りたい」と言っている人に入れない（1時間あたり）
 
 
 @dataclass
@@ -270,14 +272,17 @@ class ShiftSolver:
             works = self._works(req.staff_id, req.day, req.slot_key)
             if not works:
                 continue
+            # 予定を守ってきた人の希望を重く見る。差は 0.6〜1.3 倍に収めてあるので、
+            # 信頼が低い人の希望が無視されることはない
+            w = self.shop.staff_by_id(req.staff_id).wish_weight
             if req.wish is Wish.WANT:
                 # 入りたいのに入れなかったら加算
                 miss = self.model.NewBoolVar(f"miss_{req.staff_id}_{req.day:%m%d}_{req.slot_key}")
                 self.model.Add(sum(works) == 0).OnlyEnforceIf(miss)
                 self.model.Add(sum(works) >= 1).OnlyEnforceIf(miss.Not())
-                terms.append(miss * COST_UNMET_WANT)
+                terms.append(miss * int(COST_UNMET_WANT * w * 10))
             elif req.wish is Wish.AVOID:
-                terms.append(sum(works) * COST_FORCED_AVOID)
+                terms.append(sum(works) * int(COST_FORCED_AVOID * w * 10))
 
         # 契約の下限時間に届かない分
         for s in self.shop.staff:
@@ -290,7 +295,27 @@ class ShiftSolver:
             )
             shortfall = self.model.NewIntVar(0, s.min_hours_per_week, f"short_{s.id}")
             self.model.Add(shortfall >= s.min_hours_per_week - hours)
-            terms.append(shortfall * COST_UNDER_MIN_HOURS)
+            terms.append(shortfall * COST_UNDER_MIN_HOURS * 10)
+
+        # 日付の付かない意思表示。総量の側で効かせる
+        for s in self.shop.staff:
+            level = self.shop.load_level(s.id)
+            if level == "normal":
+                continue
+            hours = sum(
+                v * SLOT_BY_KEY[sk].hours
+                for (sid, _d, sk, _r), v in self.x.items()
+                if sid == s.id
+            )
+            if level == "lighter":
+                # 下限は契約なので割れない。下限を超えたぶんにだけコストを付ける
+                over = self.model.NewIntVar(0, s.max_hours_per_week, f"over_{s.id}")
+                self.model.Add(over >= hours - s.min_hours_per_week)
+                terms.append(over * COST_AGAINST_LOAD * 10)
+            elif level == "more":
+                short = self.model.NewIntVar(0, s.max_hours_per_week, f"want_more_{s.id}")
+                self.model.Add(short >= s.max_hours_per_week - hours)
+                terms.append(short * BONUS_WITH_LOAD * 10)
 
         # 人による総時間の偏り。最大と最小の差を詰める
         totals = []
@@ -312,7 +337,7 @@ class ShiftSolver:
             self.model.AddMinEquality(lo, totals)
             gap = self.model.NewIntVar(0, 200, "hours_gap")
             self.model.Add(gap == hi - lo)
-            terms.append(gap * COST_UNFAIR)
+            terms.append(gap * COST_UNFAIR * 10)
 
         self.model.Minimize(sum(terms))
 

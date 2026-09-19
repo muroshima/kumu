@@ -84,8 +84,15 @@ def build(
     with_injection: bool = True,
 ) -> Shop:
     rng = random.Random(seed)
-    start = start or date(2026, 10, 1)
+    # シフトは月曜から日曜で1セット。途中の曜日から始めると、週の上限も連勤も
+    # 期間のまたぎ方が現場の感覚と合わなくなる
+    start = start or date(2026, 10, 5)
+    if start.weekday() != 0:
+        start -= timedelta(days=start.weekday())
 
+    # 信頼度。全員が満点だと差が出ないので、実績のばらつきを入れておく。
+    # 実運用では trust.py の記録から計算する
+    TRUST_SEED = [100, 100, 95, 100, 90, 70, 85, 100, 60, 95, 80, 100, 75, 90, 100]
     staff = [
         Staff(
             id=f"S{i + 1:02d}",
@@ -95,6 +102,7 @@ def build(
             is_veteran=vet,
             max_hours_per_week=hi,
             min_hours_per_week=lo,
+            trust=TRUST_SEED[i] if i < len(TRUST_SEED) else 100,
         )
         for i, (name, roles, wage, vet, hi, lo) in enumerate(STAFF_SEED)
     ]

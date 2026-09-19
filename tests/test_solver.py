@@ -195,6 +195,55 @@ class Test満たせないときは解を返さない:
         assert len(res.conflicts) <= 20, f"{len(res.conflicts)} 件では多すぎて読めない"
 
 
+class Test日付の付かない意思表示:
+    def test_控えめにと言った人の時間が減る(self):
+        from kumu.model import LoadPreference
+
+        base = small_shop(days=5)
+        got_base = ShiftSolver(base, time_limit_sec=20).solve()
+        assert got_base.feasible
+        hours_base = sum(
+            SLOT_BY_KEY[a.slot_key].hours
+            for a in got_base.schedule.assignments
+            if a.staff_id == "A"
+        )
+
+        lighter = small_shop(days=5)
+        lighter.load_preferences.append(
+            LoadPreference(staff_id="A", level="lighter", reason="掛け持ちのため")
+        )
+        got = ShiftSolver(lighter, time_limit_sec=20).solve()
+        assert got.feasible
+        hours = sum(
+            SLOT_BY_KEY[a.slot_key].hours
+            for a in got.schedule.assignments
+            if a.staff_id == "A"
+        )
+
+        assert hours <= hours_base, f"控えめにと言ったのに {hours_base}h → {hours}h"
+
+    def test_控えめでも必要人数は割らない(self):
+        """意思表示は目的関数側。守らなければならないことを崩さない。"""
+        from kumu.model import LoadPreference
+
+        shop = small_shop(days=5)
+        for s in shop.staff:
+            shop.load_preferences.append(
+                LoadPreference(staff_id=s.id, level="lighter", reason="全員が控えめ希望")
+            )
+        res = ShiftSolver(shop, time_limit_sec=20).solve()
+
+        assert res.feasible
+        for demand in shop.demands:
+            for role, need in demand.required.items():
+                got = sum(
+                    1
+                    for a in res.schedule.assignments
+                    if a.day == demand.day and a.slot_key == demand.slot_key and a.role == role
+                )
+                assert got >= need
+
+
 class Test法令と店のルールを分ける:
     def test_法令由来の制約は緩める候補に出さない(self):
         """連勤や休憩を「緩めれば解けます」と提案してはいけない。"""

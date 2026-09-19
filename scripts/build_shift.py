@@ -35,6 +35,7 @@ from kumu.explain import (  # noqa: E402
 )
 from kumu.llm import LLM, Budget  # noqa: E402
 from kumu.model import SLOT_BY_KEY, SLOTS  # noqa: E402
+from kumu.report import build_report, save  # noqa: E402
 from kumu.solver import ShiftSolver  # noqa: E402
 from kumu.translate import Translator, apply_proposals  # noqa: E402
 
@@ -48,6 +49,7 @@ def main() -> int:
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--cheap", default="orcarouter/zenken-cheap")
     parser.add_argument("--time-limit", type=float, default=20.0)
+    parser.add_argument("--json", default="", help="結果をこのパスに保存する（画面が読む）")
     args = parser.parse_args()
 
     shop = build(days=args.days, impossible_week=args.impossible)
@@ -58,27 +60,39 @@ def main() -> int:
     # ---------------------------------------------------------- 希望欄を読む
     pending = []
     if not args.no_llm:
-        notes = [(r.staff_id, r.note) for r in shop.requests if r.note.strip()]
-        # 同じ文面が何度も出るので、1回読んだら使い回す
-        seen: dict[tuple[str, str], object] = {}
+        # 「この日は通院があります」の「この日」は、その希望が付いている日を指す。
+        # 本文だけでは決まらないので、欄の日付も一緒に渡す
+        notes = [(r.staff_id, r.note, r.day) for r in shop.requests if r.note.strip()]
+        # 同じ人・同じ文面・同じ日なら結果も同じなので使い回す
+        seen: dict[tuple[str, str, object], object] = {}
         llm = LLM(
             budget=Budget(max_calls=120, max_tokens=400_000),
             cache_dir=ROOT / ".cache" / "llm",
         )
         translator = Translator(llm, shop, model=args.cheap)
         proposals = []
-        for staff_id, note in notes:
-            key = (staff_id, note)
+        for staff_id, note, day in notes:
+            key = (staff_id, note, day)
             if key not in seen:
-                seen[key] = translator.translate(staff_id, note)
+                seen[key] = translator.translate(staff_id, note, about=day)
             proposals.append(seen[key])
 
-        added, pending = apply_proposals(shop, proposals)
+        added, loads, pending = apply_proposals(shop, proposals)
         shop.requests.extend(added)
+        shop.load_preferences.extend(loads)
 
         print("希望欄の読み取り")
         print(f"  読んだ文章        {len(proposals)} 件（呼び出し {llm.ledger.calls} 回）")
         print(f"  制約にした        {len(added)} 件")
+        if loads:
+            lighter = [lo for lo in loads if lo.level == "lighter"]
+            more = [lo for lo in loads if lo.level == "more"]
+            parts = []
+            if lighter:
+                parts.append(f"控えめに {len(lighter)}人")
+            if more:
+                parts.append(f"もっと入りたい {len(more)}人")
+            print(f"  負荷の希望        {' / '.join(parts)}")
         print(f"  店長の確認に回した {len(pending)} 件")
         attacked = [p for p in pending if p.injections]
         if attacked:
@@ -106,6 +120,9 @@ def main() -> int:
             print(f"  - {s}")
         print()
         print(f"（{result.status} / {result.wall_time_sec}秒）")
+        if args.json:
+            save(build_report(shop, result, pending=pending), ROOT / args.json)
+            print(f"結果を {args.json} に保存しました")
         return 2
 
     schedule = result.schedule
@@ -144,6 +161,16 @@ def main() -> int:
         for req in schedule.unmet_wishes[:3]:
             print()
             print(render_wish_explanation(explainer.why_not(req), shop))
+    if args.json:
+        print()
+        print("画面用の結果を作っています（希望1件ずつ解き直すので少し待ちます）")
+
+        def progress(i: int, total: int) -> None:
+            print(f"  {i}/{total}", end="\r", flush=True)
+
+        report = build_report(shop, result, pending=pending, on_progress=progress)
+        save(report, ROOT / args.json)
+        print(f"\n結果を {args.json} に保存しました")
     return 0
 
 

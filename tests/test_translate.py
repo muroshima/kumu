@@ -93,8 +93,9 @@ class Test指示文が混ざっていたとき:
         assert p.injections, "攻撃を検出できていない"
         assert p.needs_human, "確信度が高いという理由で素通りしている"
 
-        added, pending = apply_proposals(shop, [p])
+        added, loads, pending = apply_proposals(shop, [p])
         assert added == [], "指示文が混ざったものが制約になっている"
+        assert loads == [], "指示文が混ざったものが負荷の希望になっている"
         assert pending == [p]
 
     def test_指示文は囲いの中に入れて渡す(self):
@@ -123,6 +124,20 @@ class Test読み取れなかったとき:
 
         assert p.needs_human
         assert p.to_requests() == []
+
+    def test_日付が取れなくても意思が読めれば反映する(self):
+        """「月末は他のバイトが入っているので厳しい」は、日付を絞れなくても意思は読める。"""
+        llm = FakeLLM(payload(kind="avoid", days=[], load="lighter", confidence=0.8))
+        shop = shop_for_test()
+        tr = Translator(llm, shop)
+
+        p = tr.translate("A", "月末は他のバイトが入っているので厳しいです")
+
+        assert p.usable, "日付が無いだけで捨てている"
+        assert not p.needs_human
+        _added, loads, pending = apply_proposals(shop, [p])
+        assert pending == []
+        assert [lo.level for lo in loads] == ["lighter"]
 
     def test_確信が持てないものは人に回す(self):
         llm = FakeLLM(payload(confidence=0.3))
@@ -164,7 +179,7 @@ class Test読み取れたとき:
         tr = Translator(llm, shop)
 
         p = tr.translate("A", "10月3日の夜は用事があります")
-        added, pending = apply_proposals(shop, [p])
+        added, _loads, pending = apply_proposals(shop, [p])
 
         assert pending == []
         assert len(added) == 1
@@ -176,7 +191,7 @@ class Test読み取れたとき:
         shop = shop_for_test()
         tr = Translator(llm, shop)
 
-        added, _ = apply_proposals(shop, [tr.translate("A", "10月3日は終日無理です")])
+        added, _loads, _pending = apply_proposals(shop, [tr.translate("A", "10月3日は終日無理です")])
 
         assert len(added) == len(SLOTS)
 
