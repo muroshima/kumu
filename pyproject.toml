@@ -1,0 +1,18 @@
+[project]
+name = "kumu"
+version = "0.1.0"
+description = "解けないときに解けないと言うシフト作成エージェント"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.0",
+    "ortools>=9.10",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
