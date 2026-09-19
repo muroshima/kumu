@@ -25,7 +25,8 @@ import re
 
 # 指示文の形をしたもの。日本語と英語の両方を見る。
 INJECTION_PATTERNS: list[tuple[str, str]] = [
-    (r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+instructions?", "先行指示の無効化"),
+    # instructions だけを見ていると constraints / rules で書かれた攻撃を逃す
+    (r"(?i)ignore\s+(all\s+)?(previous|prior|above)\s+\w+", "先行指示の無効化"),
     (r"(?i)disregard\s+(all\s+)?(previous|prior|the)\s+", "先行指示の無効化"),
     (r"(これまで|以前|上記)の(指示|チェック|ルール|規程)を?\s*(すべて)?\s*(無視|忘れ)", "先行指示の無効化"),
     (r"(?i)^\s*(system|assistant|developer)\s*(への指示|:|：)", "役割のなりすまし"),
@@ -38,6 +39,12 @@ INJECTION_PATTERNS: list[tuple[str, str]] = [
     (r"(?i)(output|return|respond\s+with)\s+.{0,20}(approve|approved)", "出力の指定"),
     (r"(verdict|判定|結果)\s*を?\s*(approve|承認)", "出力の指定"),
     (r"(【)?(システム|system)\s*(通知|メッセージ|prompt)(】)?", "システムメッセージの偽装"),
+    (r"【\s*(システム|SYSTEM|運営|管理者)\s*】", "システムメッセージの偽装"),
+    # ここから下はシフト固有。割り当てを歪めにくる書き方を拾う
+    (r"(最優先|優先的に|優先して|他の人より先に)", "優先扱いの要求"),
+    (r"(すべて|全て|全部)\s*(通して|認めて|承認して)", "無条件の承認要求"),
+    (r"(?i)(prioritize|give\s+priority|assign\s+me\s+first)", "優先扱いの要求"),
+    (r"(この|本)\s*(希望|申請|従業員)\s*は\s*(特別|例外|優遇)", "例外扱いの主張"),
 ]
 
 # 伏せる対象。モデルに渡す前に落とす。
