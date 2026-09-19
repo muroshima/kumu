@@ -20,13 +20,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from kumu.dummy import build  # noqa: E402
+from kumu.inbox import apply_submissions, apply_trust  # noqa: E402
 from kumu.explain import (  # noqa: E402
     Explainer,
     group_conflicts,
@@ -41,21 +44,77 @@ from kumu.translate import Translator, apply_proposals  # noqa: E402
 
 WEEKDAY = ("月", "火", "水", "木", "金", "土", "日")
 
+# 希望欄の読み取りに使うモデル。OrcaRouter の Named Router 名でも、
+# プロバイダのモデル名でもよい。環境変数で差し替えられる
+CHEAP_MODEL = os.environ.get("KUMU_MODEL", "orcarouter/zenken-cheap")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--impossible", action="store_true", help="人が足りない週で試す")
     parser.add_argument("--no-llm", action="store_true", help="希望欄の読み取りを飛ばす")
     parser.add_argument("--days", type=int, default=7)
-    parser.add_argument("--cheap", default="orcarouter/zenken-cheap")
+    parser.add_argument(
+        "--start", default="", help="組む週の開始日（YYYY-MM-DD）。月曜に丸められる"
+    )
+    parser.add_argument(
+        "--next", action="store_true",
+        help="いま募集している週（runs/result.json の次の週）を組む"
+    )
+    parser.add_argument("--cheap", default=CHEAP_MODEL)
     parser.add_argument("--time-limit", type=float, default=20.0)
     parser.add_argument("--json", default="", help="結果をこのパスに保存する（画面が読む）")
+    parser.add_argument(
+        "--ignore-inbox", action="store_true", help="画面から出された希望と実績を読まない"
+    )
     args = parser.parse_args()
 
-    shop = build(days=args.days, impossible_week=args.impossible)
+    start = None
+    if args.next:
+        # 画面が「募集中」として希望を集めている週を組む。
+        # ここがずれると、出された希望が1件も取り込まれない
+        import json as _json
+
+        prev = ROOT / "runs" / "result.json"
+        if prev.exists():
+            cur = _json.loads(prev.read_text(encoding="utf-8"))
+            start = date.fromisoformat(cur["start"]) + timedelta(days=int(cur["days"]))
+    elif args.start:
+        start = date.fromisoformat(args.start)
+
+    shop = build(days=args.days, start=start, impossible_week=args.impossible)
     print(f"{shop.name}  {shop.start:%Y-%m-%d} から {shop.days} 日")
     print(f"スタッフ {len(shop.staff)}人 / 埋めるコマ {sum(d.total for d in shop.demands)}")
     print()
+
+    # ---------------------------------------------------------- 画面からの入力
+    if not args.ignore_inbox:
+        decisions = {}
+        dec_path = ROOT / "runs" / "decisions.json"
+        if dec_path.exists():
+            import json as _json
+
+            try:
+                decisions = _json.loads(dec_path.read_text(encoding="utf-8"))
+            except _json.JSONDecodeError:
+                decisions = {}
+
+        added, loads = apply_submissions(
+            shop, ROOT / "runs" / "submissions.jsonl", decisions=decisions
+        )
+        moved = apply_trust(shop, ROOT / "runs" / "trust.jsonl")
+        if added or loads or moved:
+            print("画面から取り込んだもの")
+            if added:
+                print(f"  希望            {added} 件")
+            if loads:
+                print(f"  負荷の希望      {loads} 人")
+            if moved:
+                names = "・".join(
+                    f"{shop.staff_by_id(k).name}({v})" for k, v in list(moved.items())[:5]
+                )
+                print(f"  信頼ポイント    {len(moved)}人 — {names}")
+            print()
 
     # ---------------------------------------------------------- 希望欄を読む
     pending = []

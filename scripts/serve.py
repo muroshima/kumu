@@ -17,12 +17,16 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import sys
 import urllib.parse
 import webbrowser
 from collections import defaultdict
 
 WEEKDAY_LABEL = ("月", "火", "水", "木", "金", "土", "日")
+
+# 希望欄の読み取りに使うモデル。build_shift.py と揃える
+CHEAP_MODEL = os.environ.get("KUMU_MODEL", "orcarouter/zenken-cheap")
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1329,7 +1333,7 @@ class Handler(BaseHTTPRequestHandler):
                 budget=Budget(max_calls=5, max_tokens=50_000),
                 cache_dir=ROOT / ".cache" / "llm",
             )
-            p = Translator(llm, shop, model="orcarouter/zenken-cheap").translate(
+            p = Translator(llm, shop, model=CHEAP_MODEL).translate(
                 staff_id, note
             )
         else:
@@ -1361,6 +1365,8 @@ class Handler(BaseHTTPRequestHandler):
             {
                 "week": start.isoformat(),
                 "picks": picked,
+                # 確認待ちで下した決定と突き合わせるための識別子
+                "ack_key": ack_key("submission", p.staff_name, note, ""),
                 "staff_id": staff_id,
                 "staff_name": p.staff_name,
                 "note": note,
