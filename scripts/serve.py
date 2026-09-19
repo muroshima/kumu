@@ -287,7 +287,12 @@ textarea:focus,select:focus{outline:2px solid var(--brand-100);outline-offset:1p
 .pick{background:var(--card);border:1px solid var(--line);border-radius:14px;
   padding:14px 18px 18px;box-shadow:var(--shadow);margin-bottom:14px;overflow-x:auto;
   user-select:none}
-.modes{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.modes{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+.rolepick{margin:0 0 0 auto;font-size:12.5px;font-weight:500;color:var(--dim);
+  display:flex;align-items:center;gap:7px}
+.rolepick select{width:auto;font-size:12.5px;padding:5px 9px}
+.myroles{font-size:13px;color:var(--dim);margin:0 0 10px}
+.myroles b{color:var(--ink-strong)}
 .mode{font:inherit;font-size:12.5px;padding:6px 14px;border-radius:99px;cursor:pointer;
   border:1px solid var(--line);background:var(--card);color:var(--dim);
   transition:transform 130ms var(--ease),border-color 130ms var(--ease),
@@ -668,8 +673,20 @@ def render_request(me: str, result: dict | None = None) -> str:
     ]
     submitted = ""
     if mine:
+
+        def summarize(x: dict) -> str:
+            """一覧に出す1行。補足を書かずグリッドだけで出すこともある。"""
+            note = (x.get("note") or "").strip()
+            if note:
+                return note.splitlines()[0][:40]
+            picks = x.get("picks") or []
+            want = [p for p in picks if p.get("state") == "want"]
+            if want:
+                return f"時間帯を {len(picks)}件選択（入りたい {len(want)}件）"
+            return f"時間帯を {len(picks)}件選択" if picks else "（内容なし）"
+
         rows = "".join(
-            f'<div class="arch"><b>{esc(x["note"].splitlines()[0][:40])}</b>'
+            f'<div class="arch"><b>{esc(summarize(x))}</b>'
             f'<span class="when">{esc(x["at"][:16].replace("T", " "))}</span></div>'
             for x in reversed(mine[-5:])
         )
@@ -704,9 +721,25 @@ def render_request(me: str, result: dict | None = None) -> str:
             f'<span class="ptrack" data-day="{d.isoformat()}" '
             f'style="grid-template-columns:repeat({HOUR_TO - HOUR_FROM},1fr)">{hours}</span></div>'
         )
+    my_roles = me_staff.get("roles", [])
+    role_picker = ""
+    if len(my_roles) > 1:
+        opts = '<option value="">どこでもよい</option>' + "".join(
+            f'<option value="{esc(r)}">{esc(r)}で入りたい</option>' for r in my_roles
+        )
+        role_picker = (
+            '<label class="rolepick">持ち場<select id="role">' + opts + "</select></label>"
+        )
+    roles_line = (
+        f'<p class="myroles">あなたが入れる持ち場：<b>{esc("・".join(my_roles))}</b>'
+        + ("" if len(my_roles) > 1 else "（ここ以外には割り当てられません）")
+        + "</p>"
+    )
+
     ticks = "".join(f"<span>{h}</span>" for h in range(HOUR_FROM, HOUR_TO, RULER_STEP))
     grid = (
-        '<div class="pick">'
+        roles_line
+        + '<div class="pick">'
         '<div class="modes">'
         '<button type="button" class="mode" data-m="want" aria-pressed="true" '
         'onclick="setMode(this)">入りたい</button>'
@@ -716,7 +749,8 @@ def render_request(me: str, result: dict | None = None) -> str:
         'onclick="setMode(this)">入れない</button>'
         '<button type="button" class="mode" data-m="clear" aria-pressed="false" '
         'onclick="setMode(this)">消す</button>'
-        '</div>'
+        + role_picker
+        + '</div>'
         '<div class="ruler"><span></span>'
         f'<div class="ticks" style="grid-template-columns:repeat({(HOUR_TO - HOUR_FROM) // RULER_STEP},1fr)">'
         f'{ticks}</div></div>{"".join(prows)}'
@@ -752,11 +786,12 @@ def render_request(me: str, result: dict | None = None) -> str:
         "   const hit=byDay[day].filter(x=>x.h>=a&&x.h<b);\n"
         # 引いた時間が、そのコマの半分以上を覆っていたら、そのコマの希望とみなす
         "   if(hit.length*2 < (b-a)) continue;\n"
-        "   const st=hit[0].s;picks.push(day+':'+key+':'+st);\n"
+        "   const st=hit[0].s;const rl=(document.getElementById('role')||{value:''}).value;\n"
+        "   picks.push(day+':'+key+':'+st+':'+rl);\n"
         "   if(st==='want') wantHours+=(b-a);}}\n"
         " const capped=Math.min(wantHours,MAX_HOURS);\n"
         " document.getElementById('amt').textContent=(capped*WAGE).toLocaleString()+'円';\n"
-        " const n=picks.filter(p=>p.endsWith(':want')).length;\n"
+        " const n=picks.filter(p=>p.split(':')[2]==='want').length;\n"
         " document.getElementById('amtdetail').textContent=n\n"
         "   ? '入りたい '+n+'コマ・'+wantHours+'時間 × '+WAGE.toLocaleString()+'円'\n"
         "   : '時間帯をドラッグで引いてください';\n"
@@ -804,7 +839,10 @@ def render_request_result(res: dict) -> str:
         for x in picked:
             d = date.fromisoformat(x["day"])
             label = {"early": "早番", "mid": "中番", "late": "遅番"}.get(x["slot"], x["slot"])
-            by_state[x["state"]].append(f"{d:%m/%d}({WEEKDAY_LABEL[d.weekday()]}){label}")
+            role = f"／{x['role']}" if x.get("role") else ""
+            by_state[x["state"]].append(
+                f"{d:%m/%d}({WEEKDAY_LABEL[d.weekday()]}){label}{role}"
+            )
         rows = "".join(
             f'<li><b>{esc(STATE_LABEL.get(st, st))}</b> — {esc("・".join(items))}</li>'
             for st, items in by_state.items()
@@ -1285,15 +1323,39 @@ class Handler(BaseHTTPRequestHandler):
         # 希望を出す先は、もう組み終わった週ではなく次の週
         start, days = open_week()
         shop = build(start=start, days=days)
-        llm = LLM(budget=Budget(max_calls=5, max_tokens=50_000), cache_dir=ROOT / ".cache" / "llm")
-        p = Translator(llm, shop, model="orcarouter/zenken-cheap").translate(staff_id, note)
+
+        if note.strip():
+            llm = LLM(
+                budget=Budget(max_calls=5, max_tokens=50_000),
+                cache_dir=ROOT / ".cache" / "llm",
+            )
+            p = Translator(llm, shop, model="orcarouter/zenken-cheap").translate(
+                staff_id, note
+            )
+        else:
+            # グリッドだけで出したときは読み取るものがない。モデルを呼ばない
+            from kumu.translate import Proposal
+
+            p = Proposal(
+                staff_id=staff_id,
+                staff_name=shop.staff_by_id(staff_id).name,
+                source_note="",
+                kind="unclear",
+            )
 
         # グリッドで選んだぶんは、そのまま希望になる。読み取りは要らない
         picked = []
         for raw in picks:
             parts = raw.split(":")
-            if len(parts) == 3:
-                picked.append({"day": parts[0], "slot": parts[1], "state": parts[2]})
+            if len(parts) >= 3:
+                picked.append(
+                    {
+                        "day": parts[0],
+                        "slot": parts[1],
+                        "state": parts[2],
+                        "role": parts[3] if len(parts) > 3 and parts[3] else "",
+                    }
+                )
 
         append_submission(
             {
@@ -1309,8 +1371,9 @@ class Handler(BaseHTTPRequestHandler):
                 "reason": p.reason,
                 "confidence": p.confidence,
                 "injections": p.injections,
-                "needs_human": p.needs_human,
-                "why": _pending_reason(p),
+                # 補足を書かずグリッドだけで出したなら、読み取るものがないので確認も要らない
+                "needs_human": bool(note.strip()) and p.needs_human,
+                "why": _pending_reason(p) if note.strip() else "",
                 "at": datetime.now().isoformat(timespec="seconds"),
             }
         )

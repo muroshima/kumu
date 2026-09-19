@@ -33,6 +33,7 @@ from .model import SLOT_BY_KEY, SLOTS, Assignment, Role, Schedule, Shop, Wish
 
 # 希望が通らなかったときのコスト。数字の大小がそのまま優先順位になる。
 COST_UNMET_WANT = 10  # 「入りたい」を落とす
+COST_WRONG_ROLE = 3  # 入れたが、希望と違う持ち場だった
 COST_FORCED_AVOID = 6  # 「できれば避けたい」に入れる
 COST_UNDER_MIN_HOURS = 3  # 契約の下限時間に届かない（1時間あたり）
 COST_UNFAIR = 1  # 人による総時間の偏り（1時間あたり）
@@ -281,6 +282,20 @@ class ShiftSolver:
                 self.model.Add(sum(works) == 0).OnlyEnforceIf(miss)
                 self.model.Add(sum(works) >= 1).OnlyEnforceIf(miss.Not())
                 terms.append(miss * int(COST_UNMET_WANT * w * 10))
+
+                # 持ち場まで指定していたら、違う持ち場に入れたぶんにも軽く加算する。
+                # 指定を強く効かせると、ホール希望が集中したときにキッチンが埋まらない
+                if req.role is not None:
+                    wrong = [
+                        v
+                        for (sid, d, sk, r), v in self.x.items()
+                        if sid == req.staff_id
+                        and d == req.day
+                        and sk == req.slot_key
+                        and r != req.role
+                    ]
+                    if wrong:
+                        terms.append(sum(wrong) * int(COST_WRONG_ROLE * w * 10))
             elif req.wish is Wish.AVOID:
                 terms.append(sum(works) * int(COST_FORCED_AVOID * w * 10))
 

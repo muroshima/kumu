@@ -110,6 +110,7 @@ class Request:
     slot_key: str
     wish: Wish
     note: str = ""
+    role: "Role | None" = None  # 「この時間はホールで入りたい」。指定しなければどこでもよい
     forced: bool = False  # 「本当に通せるのか」を確かめるとき、この1件だけを必須にする
 
 
