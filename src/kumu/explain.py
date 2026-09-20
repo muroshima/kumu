@@ -106,15 +106,10 @@ class Explainer:
 
     def why_not(self, request: Request) -> WishExplanation:
         """その希望が通らなかった理由を、解き直して確かめる。"""
-        forced = Shop(
-            name=self.shop.name,
-            start=self.shop.start,
-            days=self.shop.days,
-            staff=self.shop.staff,
-            demands=self.shop.demands,
-            requests=self._with_forced(request),
-            rules=self.shop.rules,
-        )
+        # 希望以外は元の店のまま解き直す。ここで条件が1つでも変わると、
+        # 出てくるのは「その希望を通したときに起きること」ではなくなる。
+        # 説明は事実だと言っている以上、違う店で解いた結果を出してはいけない
+        forced = self.shop.with_changes(requests=self._with_forced(request))
         result = ShiftSolver(forced, time_limit_sec=self.time_limit_sec).solve()
 
         if not result.feasible or result.schedule is None:

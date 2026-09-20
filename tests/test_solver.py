@@ -25,6 +25,7 @@ from kumu.model import (  # noqa: E402
     Wish,
 )
 from kumu.solver import ShiftSolver  # noqa: E402
+from kumu.verify import verify  # noqa: E402
 
 
 def small_shop(**over) -> Shop:
@@ -195,6 +196,55 @@ class Test満たせないときは解を返さない:
         assert len(res.conflicts) <= 20, f"{len(res.conflicts)} 件では多すぎて読めない"
 
 
+class Test日付の付かない意思表示:
+    def test_控えめにと言った人の時間が減る(self):
+        from kumu.model import LoadPreference
+
+        base = small_shop(days=5)
+        got_base = ShiftSolver(base, time_limit_sec=20).solve()
+        assert got_base.feasible
+        hours_base = sum(
+            SLOT_BY_KEY[a.slot_key].hours
+            for a in got_base.schedule.assignments
+            if a.staff_id == "A"
+        )
+
+        lighter = small_shop(days=5)
+        lighter.load_preferences.append(
+            LoadPreference(staff_id="A", level="lighter", reason="掛け持ちのため")
+        )
+        got = ShiftSolver(lighter, time_limit_sec=20).solve()
+        assert got.feasible
+        hours = sum(
+            SLOT_BY_KEY[a.slot_key].hours
+            for a in got.schedule.assignments
+            if a.staff_id == "A"
+        )
+
+        assert hours <= hours_base, f"控えめにと言ったのに {hours_base}h → {hours}h"
+
+    def test_控えめでも必要人数は割らない(self):
+        """意思表示は目的関数側。守らなければならないことを崩さない。"""
+        from kumu.model import LoadPreference
+
+        shop = small_shop(days=5)
+        for s in shop.staff:
+            shop.load_preferences.append(
+                LoadPreference(staff_id=s.id, level="lighter", reason="全員が控えめ希望")
+            )
+        res = ShiftSolver(shop, time_limit_sec=20).solve()
+
+        assert res.feasible
+        for demand in shop.demands:
+            for role, need in demand.required.items():
+                got = sum(
+                    1
+                    for a in res.schedule.assignments
+                    if a.day == demand.day and a.slot_key == demand.slot_key and a.role == role
+                )
+                assert got >= need
+
+
 class Test法令と店のルールを分ける:
     def test_法令由来の制約は緩める候補に出さない(self):
         """連勤や休憩を「緩めれば解けます」と提案してはいけない。"""
@@ -204,3 +254,38 @@ class Test法令と店のルールを分ける:
         for c in res.conflicts:
             kind = c.key.split(":")[0]
             assert kind not in ("days_in_a_row", "rest", "max_hours")
+
+
+class Test契約の最低時間は必ず守る:
+    """検査で違反として数えるものは、ソルバー側でも必ず守る側に置く。
+
+    片方だけ厳しいと、「解けた」と言いながら検査を通らないシフトが出る。
+    「満たせないなら返さない」が成り立たなくなる。
+    """
+
+    def test_解けたシフトは最低時間を満たす(self):
+        shop = build()
+        res = ShiftSolver(shop, time_limit_sec=30).solve()
+
+        assert res.feasible
+        v = verify(shop, res.schedule)
+        assert not [x for x in v.violations if x.kind == "under_min_hours"]
+
+    def test_最低時間は緩める候補に出る(self):
+        """人を増やさないと物理的に届かないこともある。
+        必ず守る側に置いたうえで、外す判断は店長に残す。"""
+        shop = build()
+        solver = ShiftSolver(shop, time_limit_sec=5)
+        keys = {r.key.split(":")[0] for r in solver.relaxables}
+
+        assert "minhours" in keys
+
+    def test_法令は緩める候補に出ない(self):
+        """最低時間を候補に足したせいで、外してはいけないものまで
+        候補に入っていないこと。"""
+        shop = build()
+        solver = ShiftSolver(shop, time_limit_sec=5)
+        labels = " ".join(r.label for r in solver.relaxables)
+
+        for word in ("連勤", "連続勤務", "勤務間隔", "インターバル", "休憩"):
+            assert word not in labels

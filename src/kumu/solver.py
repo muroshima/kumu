@@ -33,9 +33,12 @@ from .model import SLOT_BY_KEY, SLOTS, Assignment, Role, Schedule, Shop, Wish
 
 # 希望が通らなかったときのコスト。数字の大小がそのまま優先順位になる。
 COST_UNMET_WANT = 10  # 「入りたい」を落とす
+COST_WRONG_ROLE = 3  # 入れたが、希望と違う持ち場だった
 COST_FORCED_AVOID = 6  # 「できれば避けたい」に入れる
 COST_UNDER_MIN_HOURS = 3  # 契約の下限時間に届かない（1時間あたり）
 COST_UNFAIR = 1  # 人による総時間の偏り（1時間あたり）
+COST_AGAINST_LOAD = 4  # 「控えめに」と言っている人に入れる（1時間あたり）
+BONUS_WITH_LOAD = 2  # 「もっと入りたい」と言っている人に入れない（1時間あたり）
 
 
 @dataclass
@@ -54,6 +57,12 @@ class SolveResult:
     conflicts: list[Relaxable] = field(default_factory=list)
     status: str = ""
     wall_time_sec: float = 0.0
+    timed_out: bool = False  # 時間内に判断できなかった（組めないのとは別）
+
+    @property
+    def undecided(self) -> bool:
+        """組めるかどうかが分からないまま終わったか。"""
+        return self.timed_out and not self.feasible
 
 
 class ShiftSolver:
@@ -90,6 +99,7 @@ class ShiftSolver:
         self._c_rest_between_days()
         self._c_veteran()
         self._c_labor_cost()
+        self._c_min_hours()
         self._objective()
 
     def _works(self, staff_id: str, day: date, slot_key: str):
@@ -262,6 +272,35 @@ class ShiftSolver:
             Relaxable(key="cost", label=f"人件費を{limit:,}円以内に収める", literal=lit)
         )
 
+    def _c_min_hours(self) -> None:
+        """契約の最低時間。**必ず守る側に置く。**
+
+        ここを目的関数の罰則だけにしていると、届かないシフトが「制約を満たした解」
+        として返る。検査のほうは違反として数えるので、解けたと言いながら
+        検査を通らないシフトが出てくることになり、「満たせないなら返さない」が
+        成り立たない。
+
+        ただし店が人を増やさないと物理的に届かないこともあるので、
+        緩める候補には出す。外すかどうかは店長が決める。
+        """
+        for st in self.shop.staff:
+            if st.min_hours_per_week <= 0:
+                continue
+            hours = sum(
+                v * SLOT_BY_KEY[sk].hours
+                for (sid, _d, sk, _r), v in self.x.items()
+                if sid == st.id
+            )
+            lit = self.model.NewBoolVar(f"relax_minh_{st.id}")
+            self.model.Add(hours >= st.min_hours_per_week).OnlyEnforceIf(lit)
+            self.relaxables.append(
+                Relaxable(
+                    key=f"minhours:{st.id}",
+                    label=f"{st.name}さんに契約の最低 {st.min_hours_per_week}時間を渡す",
+                    literal=lit,
+                )
+            )
+
     def _objective(self) -> None:
         """通したい希望をできるだけ通す。ここは満たせなくても解は返る。"""
         terms = []
@@ -270,16 +309,34 @@ class ShiftSolver:
             works = self._works(req.staff_id, req.day, req.slot_key)
             if not works:
                 continue
+            # 予定を守ってきた人の希望を重く見る。差は 0.6〜1.3 倍に収めてあるので、
+            # 信頼が低い人の希望が無視されることはない
+            w = self.shop.staff_by_id(req.staff_id).wish_weight
             if req.wish is Wish.WANT:
                 # 入りたいのに入れなかったら加算
                 miss = self.model.NewBoolVar(f"miss_{req.staff_id}_{req.day:%m%d}_{req.slot_key}")
                 self.model.Add(sum(works) == 0).OnlyEnforceIf(miss)
                 self.model.Add(sum(works) >= 1).OnlyEnforceIf(miss.Not())
-                terms.append(miss * COST_UNMET_WANT)
-            elif req.wish is Wish.AVOID:
-                terms.append(sum(works) * COST_FORCED_AVOID)
+                terms.append(miss * int(COST_UNMET_WANT * w * 10))
 
-        # 契約の下限時間に届かない分
+                # 持ち場まで指定していたら、違う持ち場に入れたぶんにも軽く加算する。
+                # 指定を強く効かせると、ホール希望が集中したときにキッチンが埋まらない
+                if req.role is not None:
+                    wrong = [
+                        v
+                        for (sid, d, sk, r), v in self.x.items()
+                        if sid == req.staff_id
+                        and d == req.day
+                        and sk == req.slot_key
+                        and r != req.role
+                    ]
+                    if wrong:
+                        terms.append(sum(wrong) * int(COST_WRONG_ROLE * w * 10))
+            elif req.wish is Wish.AVOID:
+                terms.append(sum(works) * int(COST_FORCED_AVOID * w * 10))
+
+        # 契約の下限時間に届かない分。下限そのものは _c_min_hours で必ず守る。
+        # ここは、下限を外して解いたときにも不足を小さく保つために残す
         for s in self.shop.staff:
             if s.min_hours_per_week <= 0:
                 continue
@@ -290,7 +347,27 @@ class ShiftSolver:
             )
             shortfall = self.model.NewIntVar(0, s.min_hours_per_week, f"short_{s.id}")
             self.model.Add(shortfall >= s.min_hours_per_week - hours)
-            terms.append(shortfall * COST_UNDER_MIN_HOURS)
+            terms.append(shortfall * COST_UNDER_MIN_HOURS * 10)
+
+        # 日付の付かない意思表示。総量の側で効かせる
+        for s in self.shop.staff:
+            level = self.shop.load_level(s.id)
+            if level == "normal":
+                continue
+            hours = sum(
+                v * SLOT_BY_KEY[sk].hours
+                for (sid, _d, sk, _r), v in self.x.items()
+                if sid == s.id
+            )
+            if level == "lighter":
+                # 下限は契約なので割れない。下限を超えたぶんにだけコストを付ける
+                over = self.model.NewIntVar(0, s.max_hours_per_week, f"over_{s.id}")
+                self.model.Add(over >= hours - s.min_hours_per_week)
+                terms.append(over * COST_AGAINST_LOAD * 10)
+            elif level == "more":
+                short = self.model.NewIntVar(0, s.max_hours_per_week, f"want_more_{s.id}")
+                self.model.Add(short >= s.max_hours_per_week - hours)
+                terms.append(short * BONUS_WITH_LOAD * 10)
 
         # 人による総時間の偏り。最大と最小の差を詰める
         totals = []
@@ -312,7 +389,7 @@ class ShiftSolver:
             self.model.AddMinEquality(lo, totals)
             gap = self.model.NewIntVar(0, 200, "hours_gap")
             self.model.Add(gap == hi - lo)
-            terms.append(gap * COST_UNFAIR)
+            terms.append(gap * COST_UNFAIR * 10)
 
         self.model.Minimize(sum(terms))
 
@@ -338,6 +415,18 @@ class ShiftSolver:
                 feasible=True,
                 status=status_name,
                 wall_time_sec=round(elapsed, 3),
+            )
+
+        # 時間切れは「組めない」ではない。まだ分かっていないだけ。
+        # ここを一緒に扱うと、遅いだけの週に「組めません」と言ってしまう。
+        # 現場では、組めない週と分からない週で打つ手がまったく違う
+        if status != cp_model.INFEASIBLE:
+            return SolveResult(
+                schedule=None,
+                feasible=False,
+                status=status_name,
+                wall_time_sec=round(elapsed, 3),
+                timed_out=True,
             )
 
         # 解けなかった。どの仮定が同時に成り立たないかを受け取る

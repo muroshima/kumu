@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import sys
+
+import pytest
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -93,8 +95,9 @@ class Test指示文が混ざっていたとき:
         assert p.injections, "攻撃を検出できていない"
         assert p.needs_human, "確信度が高いという理由で素通りしている"
 
-        added, pending = apply_proposals(shop, [p])
+        added, loads, pending = apply_proposals(shop, [p])
         assert added == [], "指示文が混ざったものが制約になっている"
+        assert loads == [], "指示文が混ざったものが負荷の希望になっている"
         assert pending == [p]
 
     def test_指示文は囲いの中に入れて渡す(self):
@@ -123,6 +126,20 @@ class Test読み取れなかったとき:
 
         assert p.needs_human
         assert p.to_requests() == []
+
+    def test_日付が取れなくても意思が読めれば反映する(self):
+        """「月末は他のバイトが入っているので厳しい」は、日付を絞れなくても意思は読める。"""
+        llm = FakeLLM(payload(kind="avoid", days=[], load="lighter", confidence=0.8))
+        shop = shop_for_test()
+        tr = Translator(llm, shop)
+
+        p = tr.translate("A", "月末は他のバイトが入っているので厳しいです")
+
+        assert p.usable, "日付が無いだけで捨てている"
+        assert not p.needs_human
+        _added, loads, pending = apply_proposals(shop, [p])
+        assert pending == []
+        assert [lo.level for lo in loads] == ["lighter"]
 
     def test_確信が持てないものは人に回す(self):
         llm = FakeLLM(payload(confidence=0.3))
@@ -164,7 +181,7 @@ class Test読み取れたとき:
         tr = Translator(llm, shop)
 
         p = tr.translate("A", "10月3日の夜は用事があります")
-        added, pending = apply_proposals(shop, [p])
+        added, _loads, pending = apply_proposals(shop, [p])
 
         assert pending == []
         assert len(added) == 1
@@ -176,7 +193,7 @@ class Test読み取れたとき:
         shop = shop_for_test()
         tr = Translator(llm, shop)
 
-        added, _ = apply_proposals(shop, [tr.translate("A", "10月3日は終日無理です")])
+        added, _loads, _pending = apply_proposals(shop, [tr.translate("A", "10月3日は終日無理です")])
 
         assert len(added) == len(SLOTS)
 
@@ -186,3 +203,122 @@ class Test現実のダミーデータ:
         shop = build(with_injection=True)
         found = [r for r in shop.requests if detect_injection(r.note)]
         assert len(found) >= 2, "仕込んだはずの指示文を拾えていない"
+
+
+class Test外が落ちても止まらない:
+    """ゲートウェイが落ちている間も、シフトを組む仕事は止めない。
+
+    読み取りは希望欄の文章を制約の候補にするだけで、解くところには
+    モデルを使っていない。つまり読み取りが全滅しても、グリッドで出された
+    希望だけでシフトは組める。落ちたぶんは店長の確認に回る。
+    """
+
+    def test_全部落ちても候補は人に回る(self):
+        class 落ちるLLM:
+            def complete(self, *a, **kw):
+                raise ConnectionError("gateway unreachable")
+
+        shop = build()
+        tr = Translator(落ちるLLM(), shop)
+        p = tr.translate(shop.staff[0].id, "土曜は用事があって入れません")
+
+        assert p.error, "落ちたことを記録していない"
+        assert p.needs_human, "読めていないのに人に回していない"
+        assert not p.usable, "読めていないのに反映できることになっている"
+
+    def test_落ちた希望は制約にならない(self):
+        class 落ちるLLM:
+            def complete(self, *a, **kw):
+                raise TimeoutError("timed out")
+
+        shop = build()
+        tr = Translator(落ちるLLM(), shop)
+        props = [
+            tr.translate(s.id, "来週は入れません") for s in shop.staff[:3]
+        ]
+        added, loads, pending = apply_proposals(shop, props)
+
+        assert added == [] and loads == []
+        assert len(pending) == 3, "落ちたぶんが確認に回っていない"
+
+    def test_落ちてもシフトは組める(self):
+        """読み取りが全滅しても、解く側はモデルを使っていないので動く。"""
+        from kumu.solver import ShiftSolver
+
+        shop = build()
+        res = ShiftSolver(shop, time_limit_sec=20).solve()
+
+        assert res.feasible, "読み取り抜きでシフトが組めなくなっている"
+
+    def test_上限超過は飲み込まない(self):
+        """止めるために置いた上限が、確認送りに化けていないこと。"""
+        from kumu.llm import BudgetExceeded
+
+        class 上限LLM:
+            def complete(self, *a, **kw):
+                raise BudgetExceeded("上限に達しました")
+
+        shop = build()
+        tr = Translator(上限LLM(), shop)
+        with pytest.raises(BudgetExceeded):
+            tr.translate(shop.staff[0].id, "土曜は入れません")
+
+
+class Test知らない値は人に回す:
+    def test_知らないkindは黙って捨てない(self):
+        """日付も確信度もあるのに、to_requests() が何も作らず
+        確認にも回らない、が一番まずい消え方になる。"""
+
+        class 変な値を返すLLM:
+            def complete(self, *a, **kw):
+                return {
+                    "content": json.dumps(
+                        {
+                            "kind": "priority",  # 知らない値
+                            "days": ["2026-10-06"],
+                            "slots": ["early"],
+                            "load": "normal",
+                            "reason": "テスト",
+                            "confidence": 0.95,
+                        }
+                    ),
+                    "usage": {},
+                }
+
+        shop = build(start=date(2026, 10, 5))
+        p = Translator(変な値を返すLLM(), shop).translate(shop.staff[0].id, "入りたいです")
+
+        assert p.kind == "unclear", f"知らない値が残っている: {p.kind}"
+        assert p.needs_human, "読み取れていないのに人に回していない"
+
+        added, loads, pending = apply_proposals(shop, [p])
+        assert added == [], "知らない値のまま制約になっている"
+        assert len(pending) == 1, "確認にも回らず消えている"
+
+
+class Test確信度の値で確認を素通りできない:
+    """`nan` は比較が全部 False になるので、`confidence < 0.6` を素通りする。
+    保存ファイルにもモデルの返事にも入りうる。"""
+
+    def test_nanは確認に回る(self):
+        class NaNを返すLLM:
+            def complete(self, *a, **kw):
+                return {
+                    "content": '{"kind":"impossible","days":["2026-10-06"],'
+                    '"slots":["early"],"load":"normal","reason":"x","confidence":NaN}',
+                    "usage": {},
+                }
+
+        shop = build(start=date(2026, 10, 5))
+        p = Translator(NaNを返すLLM(), shop).translate(shop.staff[0].id, "入れません")
+
+        assert p.confidence == 0.0
+        assert p.needs_human, "nan で確認を素通りしている"
+
+    def test_範囲外は丸める(self):
+        from kumu.confidence import read_confidence
+
+        assert read_confidence(float("nan")) == 0.0
+        assert read_confidence(float("inf")) == 0.0
+        assert read_confidence(-1) == 0.0
+        assert read_confidence(2) == 1.0

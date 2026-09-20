@@ -1,0 +1,166 @@
+{
+  "shop": "架空ダイニング 三番町店",
+  "week": "2026-10-05",
+  "days": 7,
+  "rounds": 2,
+  "llm_runs": [
+    {
+      "model": "anthropic/claude-sonnet-5",
+      "trial": 1,
+      "temperature": 0.0,
+      "calls": 5,
+      "prompt_tokens": 53529,
+      "completion_tokens": 12210,
+      "cost_usd": 0.343737,
+      "seconds": 404.4,
+      "self_scores": [
+        0
+      ],
+      "violations": 11,
+      "by_kind": {
+        "under_staffed": 3,
+        "over_weekly_hours": 2,
+        "too_many_days": 1,
+        "short_rest": 1,
+        "under_min_hours": 2,
+        "no_veteran": 2
+      },
+      "assignments": 56,
+      "parse_errors": 1,
+      "truncated": false,
+      "wish": {
+        "want_total": 53,
+        "want_met": 26,
+        "avoid_total": 38,
+        "avoid_violated": 4
+      }
+    },
+    {
+      "model": "anthropic/claude-sonnet-5",
+      "trial": 2,
+      "temperature": 0.2,
+      "calls": 5,
+      "prompt_tokens": 76370,
+      "completion_tokens": 21675,
+      "cost_usd": 0.554235,
+      "seconds": 189.31,
+      "self_scores": [
+        75
+      ],
+      "violations": 3,
+      "by_kind": {
+        "too_many_days": 2,
+        "under_min_hours": 1
+      },
+      "assignments": 56,
+      "parse_errors": 1,
+      "truncated": false,
+      "wish": {
+        "want_total": 53,
+        "want_met": 22,
+        "avoid_total": 38,
+        "avoid_violated": 2
+      }
+    },
+    {
+      "model": "anthropic/claude-sonnet-5",
+      "trial": 3,
+      "temperature": 0.4,
+      "calls": 5,
+      "prompt_tokens": 49231,
+      "completion_tokens": 47273,
+      "cost_usd": 0.856788,
+      "seconds": 573.92,
+      "self_scores": [
+        100
+      ],
+      "violations": 1,
+      "by_kind": {
+        "too_many_days": 1
+      },
+      "assignments": 56,
+      "parse_errors": 1,
+      "truncated": false,
+      "wish": {
+        "want_total": 53,
+        "want_met": 23,
+        "avoid_total": 38,
+        "avoid_violated": 3
+      }
+    },
+    {
+      "model": "google/gemini-3.5-flash",
+      "trial": 1,
+      "temperature": 0.0,
+      "calls": 5,
+      "prompt_tokens": 26214,
+      "completion_tokens": 30262,
+      "cost_usd": 0.0835192,
+      "seconds": 112.81,
+      "self_scores": [
+        100
+      ],
+      "violations": 0,
+      "by_kind": {},
+      "assignments": 53,
+      "parse_errors": 1,
+      "truncated": false,
+      "wish": {
+        "want_total": 53,
+        "want_met": 27,
+        "avoid_total": 38,
+        "avoid_violated": 1
+      }
+    },
+    {
+      "model": "google/gemini-3.5-flash",
+      "trial": 2,
+      "temperature": 0.2,
+      "calls": 5,
+      "prompt_tokens": 26339,
+      "completion_tokens": 32502,
+      "cost_usd": 0.08915669999999999,
+      "seconds": 111.75,
+      "self_scores": [
+        100
+      ],
+      "violations": 0,
+      "by_kind": {},
+      "assignments": 53,
+      "parse_errors": 1,
+      "truncated": false,
+      "wish": {
+        "want_total": 53,
+        "want_met": 28,
+        "avoid_total": 38,
+        "avoid_violated": 8
+      }
+    },
+    {
+      "model": "google/gemini-3.5-flash",
+      "trial": 3,
+      "temperature": 0.4,
+      "calls": 1,
+      "prompt_tokens": 3181,
+      "completion_tokens": 19996,
+      "cost_usd": 0.050944300000000005,
+      "seconds": 129.5,
+      "self_scores": [],
+      "violations": null,
+      "by_kind": null,
+      "assignments": null,
+      "parse_errors": 1,
+      "truncated": true,
+      "wish": null
+    }
+  ],
+  "solver": {
+    "calls": 0,
+    "cost_usd": 0.0,
+    "seconds": 0.278,
+    "violations": 0,
+    "assignments": 64,
+    "unmet_wants": 16,
+    "labor_cost": 426600
+  }
+}

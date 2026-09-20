@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from enum import Enum
 
@@ -67,6 +67,17 @@ class Staff:
     max_hours_per_week: int
     min_hours_per_week: int = 0
     max_days_in_a_row: int = 5  # 本人の契約上の上限。法定より厳しいことがある
+    trust: int = 100  # 0-100。実績に応じて動く（→ trust.py）
+
+    @property
+    def wish_weight(self) -> float:
+        """希望をどれだけ重く扱うか。
+
+        入った予定を守ってきた人の希望を、当日に落とす人と同じ重さで扱うと、
+        守っている側が損をする。ただし差を付けすぎると、一度遅刻した人が
+        永久にシフトに入れなくなる。0.6〜1.3 の範囲に収める。
+        """
+        return round(0.6 + (self.trust / 100) * 0.7, 3)
 
     def can(self, role: Role) -> bool:
         return role in self.roles
@@ -99,7 +110,22 @@ class Request:
     slot_key: str
     wish: Wish
     note: str = ""
+    role: "Role | None" = None  # 「この時間はホールで入りたい」。指定しなければどこでもよい
     forced: bool = False  # 「本当に通せるのか」を確かめるとき、この1件だけを必須にする
+
+
+@dataclass
+class LoadPreference:
+    """「できれば控えめに」「もっと入りたい」という、日付の付かない意思表示。
+
+    「月末は他のバイトが入っているので厳しいです」は、どの日かを特定できなくても
+    意思ははっきり読み取れる。日付が取れないからと捨てると、本人が書いたのに
+    何も反映されないことになる。総量の側で効かせる。
+    """
+
+    staff_id: str
+    level: str  # "lighter"（控えめに） / "more"（もっと） / "normal"
+    reason: str = ""
 
 
 @dataclass
@@ -137,6 +163,22 @@ class Shop:
     demands: list[Demand]
     requests: list[Request] = field(default_factory=list)
     rules: Rules = field(default_factory=Rules)
+    load_preferences: list[LoadPreference] = field(default_factory=list)
+
+    def with_changes(self, **changes: object) -> "Shop":
+        """一部だけ差し替えた店を作る。元の店は触らない。
+
+        手で書き写すと、あとから項目が増えたときに写し忘れる。実際に
+        load_preferences を落としたまま解き直していた箇所が2つあり、
+        元のシフトと違う目的関数で「説明」や「交代候補」を出していた。
+        """
+        return replace(self, **changes)  # type: ignore[arg-type]
+
+    def load_level(self, staff_id: str) -> str:
+        for lp in self.load_preferences:
+            if lp.staff_id == staff_id:
+                return lp.level
+        return "normal"
 
     @property
     def dates(self) -> list[date]:
