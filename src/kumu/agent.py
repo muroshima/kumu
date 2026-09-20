@@ -147,6 +147,18 @@ def run(
     if first.feasible:
         return AgentResult(result=first, steps=steps)
 
+    # 時間切れのときに緩め始めるのが一番まずい。何が悪いのか分かっていないのに
+    # 条件を外すことになる。組めない証拠がないうちは、手を打たずに人に返す
+    if first.undecided:
+        steps[-1] = Step(
+            action="そのまま解く",
+            detail="時間内に組めるかどうかを判断できなかった",
+            feasible=False,
+            conflicts=0,
+            seconds=first.wall_time_sec,
+        )
+        return AgentResult(result=first, steps=steps)
+
     # 組めなかった。1つ外すたびに矛盾の中身は変わるので、
     # そのつど取り直して次の手を決める。最初のリストを使い続けると、
     # 外したあとに初めて出てくる問題（必要人数が足りない等）に手が届かない
@@ -197,7 +209,12 @@ def describe(shop: Shop, agent: AgentResult) -> str:
     """やったことを人に読める形にする。"""
     lines = ["エージェントがやったこと:"]
     for i, s in enumerate(agent.steps, 1):
-        mark = "組めた" if s.feasible else f"組めない（矛盾 {s.conflicts}件）"
+        if s.feasible:
+            mark = "組めた"
+        elif "判断できなかった" in s.detail:
+            mark = "時間内に判断できず"
+        else:
+            mark = f"組めない（矛盾 {s.conflicts}件）"
         lines.append(f"  {i}. {s.action} → {mark}  [{s.seconds:.2f}秒]")
 
     if agent.feasible and agent.proposal:
@@ -207,6 +224,12 @@ def describe(shop: Shop, agent: AgentResult) -> str:
         ]
         lines += [f"  - {a}" for a in agent.applied]
         lines += ["", "外してよいかは店長が決めてください。これは提案で、確定ではありません。"]
+    elif agent.result.undecided:
+        lines += [
+            "",
+            "時間内に判断できませんでした。**組めないと分かったわけではありません。**",
+            "制限時間を延ばすか、対象の週を短くして試してください。",
+        ]
     elif not agent.feasible:
         lines += ["", "試した範囲では組めませんでした。同時に成り立たない条件:"]
         lines += [f"  - {x}" for x in group_conflicts(agent.result.conflicts)]

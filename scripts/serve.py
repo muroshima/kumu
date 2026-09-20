@@ -592,6 +592,23 @@ def render_all(me: str, path: Path = RESULT) -> str:
         return page("全員のシフト", "all", '<div class="empty">まだ組んでいません。</div>')
     staff = r.get("staff", [])
 
+    if not r.get("feasible") and r.get("undecided"):
+        # 組めないと分かったわけではない。ここを混ぜると、
+        # 直さなくていいものを直しに行くことになる
+        return page(
+            "全員のシフト",
+            "all",
+            """<h1>この週はまだ分かりません</h1>
+<p class="sub">時間内に、組めるかどうかを判断できませんでした。組めないと分かったわけではありません。</p>
+<div class="blocked">
+  <h3>できること</h3>
+  <ul><li>時間をおいてもう一度組む</li>
+      <li>対象の週を短くして試す</li></ul>
+</div>""",
+            me=me,
+            staff=staff,
+        )
+
     if not r.get("feasible"):
         conflicts = "".join(f"<li>{esc(c)}</li>" for c in r.get("conflicts", []))
         fixes = "".join(f"<li>{esc(s)}</li>" for s in r.get("suggestions", []))

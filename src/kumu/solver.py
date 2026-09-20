@@ -57,6 +57,12 @@ class SolveResult:
     conflicts: list[Relaxable] = field(default_factory=list)
     status: str = ""
     wall_time_sec: float = 0.0
+    timed_out: bool = False  # 時間内に判断できなかった（組めないのとは別）
+
+    @property
+    def undecided(self) -> bool:
+        """組めるかどうかが分からないまま終わったか。"""
+        return self.timed_out and not self.feasible
 
 
 class ShiftSolver:
@@ -378,6 +384,18 @@ class ShiftSolver:
                 feasible=True,
                 status=status_name,
                 wall_time_sec=round(elapsed, 3),
+            )
+
+        # 時間切れは「組めない」ではない。まだ分かっていないだけ。
+        # ここを一緒に扱うと、遅いだけの週に「組めません」と言ってしまう。
+        # 現場では、組めない週と分からない週で打つ手がまったく違う
+        if status != cp_model.INFEASIBLE:
+            return SolveResult(
+                schedule=None,
+                feasible=False,
+                status=status_name,
+                wall_time_sec=round(elapsed, 3),
+                timed_out=True,
             )
 
         # 解けなかった。どの仮定が同時に成り立たないかを受け取る

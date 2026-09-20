@@ -132,3 +132,55 @@ class Test打ってよい手の範囲:
         for step in res.steps:
             if "不可を守る" in step.action:
                 assert "確認" in step.action, "本人に聞く必要があることを伝えていない"
+
+
+class Test時間切れと組めないは別:
+    """時間切れは「組めない」ではない。まだ分かっていないだけ。
+
+    現場では打つ手がまったく違う。組めない週は条件を見直す話で、
+    分からない週は待つか範囲を狭める話になる。
+
+    実際に時間切れを起こさせるテストは、前処理だけで矛盾が見つかる週だと
+    一瞬で INFEASIBLE が返り、実行するたびに結果が変わってしまう。
+    そこで、時間切れの状態を作って渡し、そこからの振る舞いを見る。
+    """
+
+    def test_矛盾を挙げるのは組めないと分かったときだけ(self):
+        from kumu.solver import ShiftSolver
+
+        for limit in (0.001, 15.0):
+            res = ShiftSolver(build(impossible_week=True), time_limit_sec=limit).solve()
+            if res.feasible:
+                continue
+            if res.timed_out:
+                assert res.conflicts == [], "判断できていないのに矛盾を挙げている"
+                assert res.undecided
+            else:
+                assert res.status == "INFEASIBLE"
+                assert res.conflicts, "組めないと分かったのに理由を返していない"
+
+    def test_時間切れのときは制約を緩めない(self, monkeypatch):
+        """何が悪いか分かっていないのに条件を外すのが、一番やってはいけないこと。"""
+        from kumu import agent as agent_mod
+        from kumu.solver import SolveResult
+
+        def timed_out(self):
+            return SolveResult(
+                schedule=None, feasible=False, status="UNKNOWN", timed_out=True
+            )
+
+        monkeypatch.setattr(agent_mod.ShiftSolver, "solve", timed_out)
+        res = run(build(impossible_week=True), time_limit_sec=1, max_attempts=6)
+
+        assert not res.feasible
+        assert res.applied == [], "判断できていないのに条件を外している"
+        assert res.proposal is False
+        assert len(res.steps) == 1, "判断できていないのに手を打っている"
+
+    def test_組めない週では従来どおり手を打つ(self):
+        """時間切れの扱いを足したせいで、本来の動きが止まっていないこと。"""
+        shop = build(impossible_week=True)
+        res = run(shop, time_limit_sec=15, max_attempts=8)
+
+        assert not res.result.timed_out
+        assert res.applied, "組めない週で手を打たなくなっている"

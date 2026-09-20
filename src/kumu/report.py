@@ -109,6 +109,8 @@ def build_report(
         "start": shop.start.isoformat(),
         "days": shop.days,
         "feasible": result.feasible,
+        # 組めないのか、まだ分かっていないのかは、画面でも書き分ける
+        "undecided": result.undecided,
         "solver_status": result.status,
         "solve_sec": result.wall_time_sec,
         "staff": _staff(shop),
