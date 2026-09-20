@@ -181,7 +181,7 @@ class Test自由文から読み取ったぶん:
         path = write(tmp_path / "s.jsonl", [rec])
 
         added, _loads = apply_submissions(
-            shop, path, decisions={submission_key(rec): {"action": "accept"}}
+            shop, path, decisions={submission_key(rec, shop.staff_by_id(rec["staff_id"]).name): {"action": "accept"}}
         )
 
         assert added == 1
@@ -194,7 +194,7 @@ class Test自由文から読み取ったぶん:
         path = write(tmp_path / "s.jsonl", [rec])
 
         added, _loads = apply_submissions(
-            shop, path, decisions={submission_key(rec): {"action": "reject"}}
+            shop, path, decisions={submission_key(rec, shop.staff_by_id(rec["staff_id"]).name): {"action": "reject"}}
         )
 
         assert added == 0
@@ -502,7 +502,7 @@ class Test保存ファイルの判断を信じない:
         shop = build()
         # 別の（承認済みの）投稿の識別子を、指示文入りの投稿に写した状態
         legit = self._rec(shop, note="月曜は入れません", injections=[])
-        approved = submission_key(legit)
+        approved = submission_key(legit, shop.staff_by_id(legit["staff_id"]).name)
         attack = self._rec(shop, ack_key=approved)
 
         path = tmp_path / "s.jsonl"
@@ -523,7 +523,7 @@ class Test保存ファイルの判断を信じない:
         path.write_text(json.dumps(rec, ensure_ascii=False) + "\n", encoding="utf-8")
 
         added, _ = apply_submissions(
-            shop, path, decisions={submission_key(rec): {"action": "accept"}}
+            shop, path, decisions={submission_key(rec, shop.staff_by_id(rec["staff_id"]).name): {"action": "accept"}}
         )
 
         assert added > 0, "店長が承認したのに反映されていない"
@@ -531,10 +531,9 @@ class Test保存ファイルの判断を信じない:
     def test_壊れた行でシフト作成が止まらない(self, tmp_path):
         shop = build()
         path = tmp_path / "s.jsonl"
+        clean = self._rec(shop, note="月曜は入れません", injections=[])
         path.write_text(
-            "[]\nnull\n"
-            + json.dumps(self._rec(shop, injections=[], needs_human=False), ensure_ascii=False)
-            + "\n",
+            "[]\nnull\n" + json.dumps(clean, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
 
@@ -557,3 +556,88 @@ class Test保存ファイルの判断を信じない:
         added, _ = apply_submissions(shop, path, decisions={})
 
         assert added == 0, "nan を書くだけで確認を素通りできている"
+
+    def test_承認後に中身を書き換えても通らない(self, tmp_path):
+        """承認は「この内容ちょうど」に出すもの。文面を残したまま
+        日付や種別を書き換えて、別の制約を通せてはいけない。"""
+        from kumu.inbox import submission_key
+
+        shop = build()
+        name = shop.staff[0].name
+        # 確信度が低いので確認が要る＝承認を通らないと反映されないもの
+        approved_rec = self._rec(
+            shop,
+            note="月曜は入れません",
+            injections=[],
+            kind="impossible",
+            confidence=0.3,
+        )
+        key = submission_key(approved_rec, name)
+        # 承認どおりなら通ることを先に確かめておく
+        ok = tmp_path / "ok.jsonl"
+        ok.write_text(json.dumps(approved_rec, ensure_ascii=False) + "\n", encoding="utf-8")
+        base, _ = apply_submissions(
+            build(), ok, decisions={key: {"action": "accept"}}
+        )
+        assert base > 0
+
+        # 文面はそのまま、通す日だけ増やした
+        tampered = dict(approved_rec)
+        tampered["days"] = [d.isoformat() for d in shop.dates[:5]]
+
+        path = tmp_path / "s.jsonl"
+        path.write_text(json.dumps(tampered, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        added, _ = apply_submissions(shop, path, decisions={key: {"action": "accept"}})
+
+        assert added == 0, "承認後に中身を書き換えたものが通っている"
+
+    def test_他人の承認を自分のIDで使えない(self, tmp_path):
+        from kumu.inbox import submission_key
+
+        shop = build()
+        a, b = shop.staff[0], shop.staff[1]
+        legit = self._rec(
+            shop, note="月曜は入れません", injections=[], confidence=0.3
+        )
+        legit["staff_id"], legit["staff_name"] = a.id, a.name
+        key = submission_key(legit, a.name)
+
+        # 他人（b）が、承認済みレコードの中身をそのまま自分の ID で出す
+        stolen = dict(legit)
+        stolen["staff_id"] = b.id
+
+        path = tmp_path / "s.jsonl"
+        path.write_text(json.dumps(stolen, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        added, _ = apply_submissions(shop, path, decisions={key: {"action": "accept"}})
+
+        assert added == 0, "他人の承認が自分の希望に効いている"
+
+    def test_指示文の記録を消しても検出される(self, tmp_path):
+        """injections の行を消すだけで確認を素通りできてはいけない。"""
+        shop = build()
+        path = tmp_path / "s.jsonl"
+        path.write_text(
+            json.dumps(self._rec(shop, injections=[]), ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+        added, _ = apply_submissions(shop, path, decisions={})
+
+        assert added == 0, "記録を消すだけで指示文入りが通っている"
+
+    def test_confidenceにtrueを書いても通らない(self, tmp_path):
+        shop = build()
+        path = tmp_path / "s.jsonl"
+        path.write_text(
+            json.dumps(
+                self._rec(shop, injections=[], confidence=True), ensure_ascii=False
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        added, _ = apply_submissions(shop, path, decisions={})
+
+        assert added == 0, "true を書くだけで確認を素通りできている"

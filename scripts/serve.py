@@ -1061,7 +1061,13 @@ def render_review(me: str) -> str:
             continue
         # 取り込み側と同じ関数で作る。保存されている値を使うと、承認済みの
         # ものから写すだけで確認を通っていない希望に承認が効いてしまう
-        key = submission_key(x)
+        # 名前は投稿ファイルの値ではなく、在籍者一覧から引いたものを使う
+        authoritative = next(
+            (t["name"] for t in staff if t["id"] == x.get("staff_id")), ""
+        )
+        if not authoritative:
+            continue
+        key = submission_key(x, authoritative)
         if key in acked:
             archived.append((key, f'{x["staff_name"]}さん', x["why"], acked[key].get("at", "")))
             continue

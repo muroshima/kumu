@@ -13,6 +13,7 @@ from datetime import date
 from pathlib import Path
 
 from .keys import proposal_key
+from .sanitize import detect_injection
 from .confidence import read_confidence
 from .model import SLOTS, LoadPreference, Request, Role, Shop, Wish
 
@@ -51,12 +52,16 @@ def needs_human_for(rec: dict) -> bool:
 
     `Proposal.needs_human` と同じ条件にしてある。片方だけ変えると、
     画面で確認待ちに見えているものが確認なしで通る、が起きる。
+
+    **指示文の有無も記録を信じず、原文から見直す。** injections の行を
+    消すだけで、指示文が混ざった希望が確認なしで通ってしまう。
     """
     kind = str(rec.get("kind", "unclear"))
     confidence = read_confidence(rec.get("confidence"))
     usable = bool(rec.get("days")) or str(rec.get("load", "normal")) != "normal"
+    injected = detect_injection(str(rec.get("note", ""))) or rec.get("injections")
     return bool(
-        rec.get("injections")
+        injected
         or rec.get("error")
         or kind not in ("impossible", "avoid", "want")
         or not usable
@@ -64,16 +69,29 @@ def needs_human_for(rec: dict) -> bool:
     )
 
 
-def submission_key(rec: dict) -> str:
+def submission_key(rec: dict, staff_name: str) -> str:
     """確認済みかどうかを突き合わせる識別子を、中身から作り直す。
 
-    保存されている値をそのまま使うと、承認済みのものから写すだけで
-    確認を通っていない希望に承認が効いてしまう。
+    **実際に適用される値を全部材料にする。** 文面だけを材料にすると、
+    承認された文面はそのままに kind や days を書き換えて、別の制約を
+    通せてしまう。承認は「この内容ちょうど」に対して出すものにする。
+
+    名前は投稿ファイルの値ではなく、staff_id から引いた正しい名前を渡す。
+    記録の名前を使うと、他人の承認済みレコードを写してきて自分の
+    staff_id で適用する、ができてしまう。
     """
     return proposal_key(
-        str(rec.get("staff_name", "")),
+        staff_name,
         str(rec.get("note", "")),
-        str(rec.get("about", "")),
+        "|".join(
+            [
+                str(rec.get("about", "")),
+                str(rec.get("kind", "")),
+                ",".join(sorted(str(d) for d in rec.get("days") or [])),
+                ",".join(sorted(str(x) for x in rec.get("slots") or [])),
+                str(rec.get("load", "normal")),
+            ]
+        ),
     )
 
 
@@ -143,7 +161,8 @@ def apply_submissions(
         # 書き換えるだけで、指示文が混ざったものや確信の低いものを確認なしで
         # 制約にできてしまう。承認済みの ack_key を写せば承認も流用できる。
         # どちらも中身から計算し直す
-        key = submission_key(rec)
+        # 名前は記録ではなく、在籍が確認できた staff_id から引く
+        key = submission_key(rec, shop.staff_by_id(staff_id).name)
         if key in rejected_keys:
             continue
         if needs_human_for(rec) and key not in accepted_keys:

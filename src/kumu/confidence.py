@@ -12,6 +12,10 @@ import math
 
 def read_confidence(raw: object) -> float:
     """0.0〜1.0 の有限な値だけを通す。読めないものは 0.0（＝人に回る）。"""
+    # bool は float に通ると True が 1.0 になる。確信度は確認を飛ばすかの
+    # 判定に使うので、"confidence": true と書くだけで素通りできてしまう
+    if isinstance(raw, bool):
+        return 0.0
     try:
         value = float(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError):
