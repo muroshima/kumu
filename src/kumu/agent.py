@@ -111,16 +111,7 @@ def _apply(shop: Shop, r: Relaxable) -> Shop:
             )
         ]
 
-    return Shop(
-        name=shop.name,
-        start=shop.start,
-        days=shop.days,
-        staff=shop.staff,
-        demands=demands,
-        requests=requests,
-        rules=rules,
-        load_preferences=list(shop.load_preferences),
-    )
+    return shop.with_changes(demands=demands, requests=requests, rules=rules)
 
 
 def run(

@@ -50,15 +50,9 @@ def find_substitute(
         Request(staff_id=staff_id, day=day, slot_key=slot_key, wish=Wish.IMPOSSIBLE)
     )
 
-    trial = Shop(
-        name=shop.name,
-        start=shop.start,
-        days=shop.days,
-        staff=shop.staff,
-        demands=shop.demands,
-        requests=requests,
-        rules=shop.rules,
-    )
+    # その人を外す以外は元の店のまま。負荷の希望まで落とすと、
+    # 「控えめに」と出した人に追加の勤務を勧めることになる
+    trial = shop.with_changes(requests=requests)
     result = ShiftSolver(trial, time_limit_sec=time_limit_sec).solve()
 
     if result.undecided:

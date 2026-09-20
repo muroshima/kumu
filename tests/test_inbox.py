@@ -369,3 +369,49 @@ class Test確認済みの識別子:
         added, _, pending = apply_proposals(shop, [p], approved_keys={key})
         assert added, "承認しても反映されていない"
         assert pending == []
+
+    def test_区切り文字を書いても他人の識別子にならない(self):
+        """希望欄は本人が自由に書ける。区切り文字で材料の切れ目を
+        ずらせると、他人への確認結果を自分の希望に当てられる。"""
+        from kumu.keys import ack_key
+
+        assert ack_key("A|B", "C") != ack_key("A", "B|C")
+        assert ack_key("", "AB") != ack_key("A", "B")
+
+
+class Test解き直すときは元の店のまま:
+    """説明も交代候補も、元のシフトと同じ条件で解き直さないと事実にならない。"""
+
+    def test_希望の説明で負荷の希望が落ちない(self):
+        from kumu.explain import Explainer
+        from kumu.model import LoadPreference
+
+        shop = build()
+        shop.load_preferences.append(
+            LoadPreference(staff_id=shop.staff[0].id, level="lighter", reason="掛け持ち")
+        )
+        res = ShiftSolver(shop, time_limit_sec=20).solve()
+        assert res.feasible
+
+        ex = Explainer(shop, res.schedule, time_limit_sec=20)
+        target = next(r for r in shop.requests if r.wish is Wish.WANT)
+        ex.why_not(target)  # 落ちないこと
+
+        # 解き直しに使う店から、負荷の希望が落ちていないこと
+        moved = shop.with_changes(requests=list(shop.requests))
+        assert moved.load_preferences == shop.load_preferences
+
+    def test_一部だけ差し替えても他の項目が残る(self):
+        from kumu.model import LoadPreference
+
+        shop = build()
+        shop.load_preferences.append(
+            LoadPreference(staff_id=shop.staff[0].id, level="lighter")
+        )
+        other = shop.with_changes(requests=[])
+
+        assert other.requests == []
+        assert other.load_preferences == shop.load_preferences, "負荷の希望が落ちている"
+        assert other.rules == shop.rules
+        assert other.staff == shop.staff
+        assert other.start == shop.start and other.days == shop.days

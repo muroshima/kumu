@@ -14,9 +14,15 @@ import hashlib
 
 
 def ack_key(*parts: object) -> str:
-    """内容から決まる識別子。プロセスをまたいでも同じ値になる。"""
-    joined = "|".join(str(p) for p in parts)
-    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
+    """内容から決まる識別子。プロセスをまたいでも同じ値になる。
+
+    区切り文字でつなぐだけだと、材料の中にその文字が入ったときに
+    別の組み合わせが同じ識別子になる。希望欄は本人が自由に書ける場所なので、
+    区切り文字を書けば他人の確認結果を自分の希望に当てられることになる。
+    長さを先に書いて、切れ目が一意に決まるようにしてある。
+    """
+    body = "".join(f"{len(t)}:{t}" for t in (str(p) for p in parts))
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
 
 def proposal_key(staff_name: str, note: str) -> str:

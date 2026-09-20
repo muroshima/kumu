@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from enum import Enum
 
@@ -164,6 +164,15 @@ class Shop:
     requests: list[Request] = field(default_factory=list)
     rules: Rules = field(default_factory=Rules)
     load_preferences: list[LoadPreference] = field(default_factory=list)
+
+    def with_changes(self, **changes: object) -> "Shop":
+        """一部だけ差し替えた店を作る。元の店は触らない。
+
+        手で書き写すと、あとから項目が増えたときに写し忘れる。実際に
+        load_preferences を落としたまま解き直していた箇所が2つあり、
+        元のシフトと違う目的関数で「説明」や「交代候補」を出していた。
+        """
+        return replace(self, **changes)  # type: ignore[arg-type]
 
     def load_level(self, staff_id: str) -> str:
         for lp in self.load_preferences:
