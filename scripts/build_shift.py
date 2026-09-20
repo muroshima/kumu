@@ -42,6 +42,7 @@ from kumu.model import SLOT_BY_KEY, SLOTS  # noqa: E402
 from kumu.report import build_report, save  # noqa: E402
 from kumu.solver import ShiftSolver  # noqa: E402
 from kumu.translate import Translator, apply_proposals  # noqa: E402
+from kumu.workspace import load_decisions  # noqa: E402
 
 WEEKDAY = ("月", "火", "水", "木", "金", "土", "日")
 
@@ -93,16 +94,9 @@ def main() -> int:
     print()
 
     # ---------------------------------------------------------- 画面からの入力
+    decisions = {}
     if not args.ignore_inbox:
-        decisions = {}
-        dec_path = ROOT / "runs" / "decisions.json"
-        if dec_path.exists():
-            import json as _json
-
-            try:
-                decisions = _json.loads(dec_path.read_text(encoding="utf-8"))
-            except _json.JSONDecodeError:
-                decisions = {}
+        decisions = load_decisions(ROOT / "runs" / "decisions.json")
 
         added, loads = apply_submissions(
             shop, ROOT / "runs" / "submissions.jsonl", decisions=decisions
@@ -141,7 +135,12 @@ def main() -> int:
                 seen[key] = translator.translate(staff_id, note, about=day)
             proposals.append(seen[key])
 
-        added, loads, pending = apply_proposals(shop, proposals)
+        # 店長が「この内容で反映」を押したものは、確認が要る扱いのままでも通す。
+        # ここで渡し忘れると、画面で承認しても組み直しのたびに確認待ちへ戻る
+        approved = {
+            k for k, v in decisions.items() if v.get("action") in ("accept", "revise")
+        }
+        added, loads, pending = apply_proposals(shop, proposals, approved_keys=approved)
         shop.requests.extend(added)
         shop.load_preferences.extend(loads)
 

@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
+from .keys import proposal_key
 from .llm import LLM, BudgetExceeded
 from .model import SLOTS, LoadPreference, Request, Shop, Wish
 from .sanitize import as_quoted_data, detect_injection
@@ -292,7 +293,9 @@ def apply_proposals(
     seen_load: set[str] = set()
 
     for p in proposals:
-        key = f"{p.staff_id}:{hash(p.source_note) & 0xFFFF:04x}"
+        # 組み込みの hash() はプロセスごとに変わるので使えない。
+        # 画面側と同じ作り方でないと、承認が突き合わない
+        key = proposal_key(p.staff_name, p.source_note)
         if p.needs_human and key not in approved_keys:
             pending.append(p)
             continue

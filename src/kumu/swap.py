@@ -28,6 +28,7 @@ class SwapResult:
     side_effects: list[str] = field(default_factory=list)  # 他に動く人
     blockers: list[Relaxable] = field(default_factory=list)  # 代われない理由
     cost_delta: int = 0
+    undecided: bool = False  # 時間内に判断できなかった（代われないのとは別）
 
 
 def find_substitute(
@@ -59,6 +60,11 @@ def find_substitute(
         rules=shop.rules,
     )
     result = ShiftSolver(trial, time_limit_sec=time_limit_sec).solve()
+
+    if result.undecided:
+        # 代われる人がいないのか、まだ分からないのかは別の話。
+        # 一緒にすると、頼めば代われる人がいるのに諦めることになる
+        return SwapResult(possible=False, undecided=True)
 
     if not result.feasible or result.schedule is None:
         return SwapResult(possible=False, blockers=result.conflicts)

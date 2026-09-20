@@ -191,7 +191,11 @@ def run(
         applied.append(_relax_label(pick))
         step = Step(
             action=_relax_label(pick),
-            detail="この条件を外して組み直した",
+            detail=(
+                "この条件を外したが、時間内に判断できなかった"
+                if res.undecided
+                else "この条件を外して組み直した"
+            ),
             feasible=res.feasible,
             conflicts=len(res.conflicts),
             seconds=res.wall_time_sec,
@@ -202,6 +206,11 @@ def run(
 
     if res.feasible:
         return AgentResult(result=res, steps=steps, applied=applied, proposal=True)
+
+    # 組めなかったときに返すのは、緩めたあとの店ではなく**元の店**の矛盾。
+    # 店長は何も外すと決めていないので、実際に成り立っていないのは元の条件のほう。
+    # 緩めた先の矛盾を見せると、外すと決めてもいない条件の話になる。
+    # 途中で時間切れになった試行は steps に残るので、探索を打ち切ったことは追える
     return AgentResult(result=first, steps=steps, applied=applied)
 
 

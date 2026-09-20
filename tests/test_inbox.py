@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from kumu.dummy import build  # noqa: E402
 from kumu.inbox import apply_submissions, apply_trust  # noqa: E402
-from kumu.model import Role, Wish  # noqa: E402
+from kumu.model import SLOTS, Role, Wish  # noqa: E402
 from kumu.solver import ShiftSolver  # noqa: E402
 from kumu.trust import append_event  # noqa: E402
 
@@ -263,3 +263,109 @@ class Test信頼ポイント:
             append_event(path, "S01", "no_show")
 
         assert scores(load_events(path))["S01"] == MIN_TRUST
+
+
+class Test壊れた保存データで落ちない:
+    """保存されたファイルは書き換えられる。知らない値が入っていても、
+    シフト作成ごと止まってはいけない。"""
+
+    def test_知らないコマは捨てる(self, tmp_path):
+        shop = build()
+        path = tmp_path / "submissions.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "week": shop.start.isoformat(),
+                    "staff_id": shop.staff[0].id,
+                    "picks": [
+                        {"day": shop.dates[0].isoformat(), "slot": "深夜", "state": "want"},
+                        {"day": shop.dates[0].isoformat(), "slot": "early", "state": "want"},
+                    ],
+                    "needs_human": False,
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        added, _ = apply_submissions(shop, path, decisions={})
+
+        assert added == 1, "知らないコマを取り込んでいる、または正しいコマまで捨てている"
+        assert all(r.slot_key in {s.key for s in SLOTS} for r in shop.requests)
+
+    def test_知らないコマが入っても検査まで通る(self, tmp_path):
+        """取り込んだあとに SLOT_BY_KEY を引くところで落ちないこと。"""
+        from kumu.solver import ShiftSolver
+        from kumu.verify import verify
+
+        shop = build()
+        path = tmp_path / "submissions.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "week": shop.start.isoformat(),
+                    "staff_id": shop.staff[0].id,
+                    "kind": "impossible",
+                    "days": [shop.dates[0].isoformat()],
+                    "slots": ["存在しないコマ"],
+                    "needs_human": False,
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        apply_submissions(shop, path, decisions={})
+
+        res = ShiftSolver(shop, time_limit_sec=20).solve()
+        assert res.feasible
+        verify(shop, res.schedule)  # KeyError で落ちないこと
+
+
+class Test確認済みの識別子:
+    def test_プロセスをまたいでも同じ値になる(self):
+        """組み込みの hash() を使うと、画面と組み立てで値が変わり、
+        店長が承認しても毎回確認待ちに戻ってくる。"""
+        import subprocess
+        import sys as _sys
+
+        code = (
+            "import sys; sys.path.insert(0, 'src');"
+            "from kumu.keys import proposal_key;"
+            "print(proposal_key('田中', '土曜は入れません'))"
+        )
+        got = {
+            subprocess.run(
+                [_sys.executable, "-c", code],
+                capture_output=True,
+                text=True,
+                cwd=str(Path(__file__).resolve().parents[1]),
+            ).stdout.strip()
+            for _ in range(2)
+        }
+        assert len(got) == 1, "実行するたびに識別子が変わる"
+
+    def test_承認したものは組み直しで反映される(self):
+        from kumu.keys import proposal_key
+        from kumu.translate import Proposal, apply_proposals
+
+        shop = build()
+        p = Proposal(
+            staff_id=shop.staff[0].id,
+            staff_name=shop.staff[0].name,
+            source_note="来週は入れません",
+            kind="impossible",
+            days=[shop.dates[0]],
+            slots=["early"],
+            confidence=0.3,  # 確信が低いので、そのままなら確認待ち
+        )
+        assert p.needs_human
+
+        added, _, pending = apply_proposals(shop, [p])
+        assert added == [] and len(pending) == 1
+
+        key = proposal_key(p.staff_name, p.source_note)
+        added, _, pending = apply_proposals(shop, [p], approved_keys={key})
+        assert added, "承認しても反映されていない"
+        assert pending == []

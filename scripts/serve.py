@@ -34,6 +34,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from kumu.keys import ack_key, proposal_key  # noqa: E402
+
 RESULT = ROOT / "runs" / "result.json"
 IMPOSSIBLE = ROOT / "runs" / "impossible.json"
 ACKED = ROOT / "runs" / "acked.json"
@@ -114,16 +116,6 @@ def append_submission(record: dict) -> None:
     with SUBMISSIONS.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-
-def ack_key(*parts) -> str:
-    """確認済みかどうかを覚えておくための識別子。
-
-    同じ希望を組み直すたびに出し直されるので、内容から作る。
-    ID を振ってしまうと組み直しのたびに別物になり、確認済みが効かない。
-    """
-    import hashlib
-
-    return hashlib.sha256("|".join(str(p) for p in parts).encode("utf-8")).hexdigest()[:16]
 
 
 def _load_json(path: Path) -> dict:
@@ -517,14 +509,21 @@ def render_mine(me: str) -> str:
 
 
 def render_swap(me: str, day_iso: str, slot_key: str) -> str:
-    from kumu.dummy import build
     from kumu.swap import find_substitute, schedule_from_report
+    from kumu.workspace import shop_for_week
 
     r = load(RESULT)
     if not r:
         return page("交代", "mine", '<div class="empty">まだ組んでいません。</div>')
 
-    shop = build()
+    # そのシフトを組んだときと同じ状態の店で解き直す。seed から作り直すと、
+    # 取り込んだ希望も店長の確認結果も信頼ポイントも消えるので、
+    # 元のシフトと違う制約で候補を出すことになる
+    shop = shop_for_week(
+        ROOT / "runs",
+        start=date.fromisoformat(r["start"]),
+        days=int(r["days"]),
+    )
     schedule = schedule_from_report(shop, r["calendar"])
     d = date.fromisoformat(day_iso)
     res = find_substitute(shop, schedule, me, d, slot_key)
@@ -551,6 +550,15 @@ def render_swap(me: str, day_iso: str, slot_key: str) -> str:
   {extra}
   <div style="margin-top:14px"><a class="btn primary" href="/">依頼する</a>
     <a class="btn" href="/">やめる</a></div>
+</div>"""
+    elif res.undecided:
+        body = """
+<div class="item">
+  <div class="top"><span class="who">まだ分かりません</span>
+    <span class="pill">判断できず</span></div>
+  <div class="detail">時間内に、代われる人がいるかどうかを判断できませんでした。
+    代われないと分かったわけではありません。時間をおいてもう一度試してください。</div>
+  <div style="margin-top:14px"><a class="btn" href="/">戻る</a></div>
 </div>"""
     elif res.possible:
         body = """
@@ -966,7 +974,7 @@ def render_review(me: str) -> str:
     # --- 確認待ちの希望
     pending_cards, archived = [], []
     for p in r.get("pending", []):
-        key = ack_key("pending", p["staff_name"], p["note"])
+        key = proposal_key(p["staff_name"], p["note"])
         is_attack = bool(p.get("injections"))
         pill = (
             '<span class="pill no">反映していません</span>'
@@ -1048,7 +1056,11 @@ def render_review(me: str) -> str:
     for x in load_submissions():
         if x["week"] != open_start.isoformat() or not x.get("needs_human"):
             continue
-        key = ack_key("submission", x["staff_name"], x["note"], x["at"])
+        # 作り直すと、材料が1つでも違った時点で店長の決定と突き合わなくなる。
+        # 保存されているものをそのまま使う
+        key = x.get("ack_key") or ack_key(
+            "submission", x["staff_name"], x["note"], x.get("at", "")
+        )
         if key in acked:
             archived.append((key, f'{x["staff_name"]}さん', x["why"], acked[key].get("at", "")))
             continue
@@ -1378,12 +1390,14 @@ class Handler(BaseHTTPRequestHandler):
                     }
                 )
 
+        submitted_at = datetime.now().isoformat(timespec="seconds")
         append_submission(
             {
                 "week": start.isoformat(),
                 "picks": picked,
-                # 確認待ちで下した決定と突き合わせるための識別子
-                "ack_key": ack_key("submission", p.staff_name, note, ""),
+                # 確認待ちで下した決定と突き合わせるための識別子。
+                # 画面側と同じ材料で作らないと、店長が承認しても突き合わない
+                "ack_key": ack_key("submission", p.staff_name, note, submitted_at),
                 "staff_id": staff_id,
                 "staff_name": p.staff_name,
                 "note": note,
@@ -1397,7 +1411,7 @@ class Handler(BaseHTTPRequestHandler):
                 # 補足を書かずグリッドだけで出したなら、読み取るものがないので確認も要らない
                 "needs_human": bool(note.strip()) and p.needs_human,
                 "why": _pending_reason(p) if note.strip() else "",
-                "at": datetime.now().isoformat(timespec="seconds"),
+                "at": submitted_at,
             }
         )
 

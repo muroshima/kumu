@@ -12,7 +12,7 @@ import json
 from datetime import date
 from pathlib import Path
 
-from .model import LoadPreference, Request, Role, Shop, Wish
+from .model import SLOTS, LoadPreference, Request, Role, Shop, Wish
 from .trust import DEFAULT_TRUST, load_events, scores
 
 STATE_TO_WISH = {
@@ -55,6 +55,9 @@ def apply_submissions(
 
     valid_days = set(shop.dates)
     valid_staff = {s.id for s in shop.staff}
+    # 保存されたファイルは書き換えられる。知らないコマがそのまま入ると、
+    # あとで SLOT_BY_KEY を引いたところで落ちて、シフト作成ごと止まる
+    valid_slots = {s.key for s in SLOTS}
     added = 0
     loads = 0
     seen_load: set[str] = set()
@@ -73,7 +76,8 @@ def apply_submissions(
             except (KeyError, ValueError):
                 continue
             wish = STATE_TO_WISH.get(pick.get("state", ""))
-            if day not in valid_days or wish is None:
+            slot_key = str(pick.get("slot", ""))
+            if day not in valid_days or wish is None or slot_key not in valid_slots:
                 continue
             role = None
             for r in Role:
@@ -84,7 +88,7 @@ def apply_submissions(
                 Request(
                     staff_id=staff_id,
                     day=day,
-                    slot_key=pick.get("slot", ""),
+                    slot_key=slot_key,
                     wish=wish,
                     note="画面から選択",
                     role=role,
@@ -109,8 +113,10 @@ def apply_submissions(
             wish = STATE_TO_WISH.get(rec.get("kind", ""))
             if wish is None:
                 continue
-            slots = rec.get("slots") or ["early", "mid", "late"]
+            slots = rec.get("slots") or sorted(valid_slots)
             for slot in slots:
+                if slot not in valid_slots:
+                    continue
                 shop.requests.append(
                     Request(
                         staff_id=staff_id,
