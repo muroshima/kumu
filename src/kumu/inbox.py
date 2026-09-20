@@ -13,6 +13,7 @@ from datetime import date
 from pathlib import Path
 
 from .keys import proposal_key
+from .confidence import read_confidence
 from .model import SLOTS, LoadPreference, Request, Role, Shop, Wish
 
 # グリッドで選んだ希望に付ける印。読み取りを通していないので、
@@ -52,10 +53,7 @@ def needs_human_for(rec: dict) -> bool:
     画面で確認待ちに見えているものが確認なしで通る、が起きる。
     """
     kind = str(rec.get("kind", "unclear"))
-    try:
-        confidence = float(rec.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        confidence = 0.0
+    confidence = read_confidence(rec.get("confidence"))
     usable = bool(rec.get("days")) or str(rec.get("load", "normal")) != "normal"
     return bool(
         rec.get("injections")

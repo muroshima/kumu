@@ -540,3 +540,20 @@ class Test保存ファイルの判断を信じない:
 
         added, _ = apply_submissions(shop, path, decisions={})  # 落ちないこと
         assert added > 0
+
+    def test_nanを書いても確認を素通りできない(self, tmp_path):
+        shop = build()
+        path = tmp_path / "s.jsonl"
+        # json.dumps は NaN をそのまま出す。読み込み側も受け取る
+        path.write_text(
+            json.dumps(
+                self._rec(shop, injections=[], confidence=float("nan")),
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        added, _ = apply_submissions(shop, path, decisions={})
+
+        assert added == 0, "nan を書くだけで確認を素通りできている"

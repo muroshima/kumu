@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
+from .confidence import read_confidence
 from .keys import proposal_key
 from .llm import LLM, BudgetExceeded
 from .model import SLOTS, LoadPreference, Request, Shop, Wish
@@ -264,10 +265,7 @@ class Translator:
         load = str(parsed.get("load", "normal"))
         proposal.load = load if load in ("lighter", "more", "normal") else "normal"
         proposal.reason = str(parsed.get("reason", ""))[:200]
-        try:
-            proposal.confidence = float(parsed.get("confidence", 0.0))
-        except (TypeError, ValueError):
-            proposal.confidence = 0.0
+        proposal.confidence = read_confidence(parsed.get("confidence"))
 
         valid_days = set(self.shop.dates)
         for raw in parsed.get("days", []) or []:

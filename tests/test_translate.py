@@ -294,3 +294,31 @@ class Test知らない値は人に回す:
         added, loads, pending = apply_proposals(shop, [p])
         assert added == [], "知らない値のまま制約になっている"
         assert len(pending) == 1, "確認にも回らず消えている"
+
+
+class Test確信度の値で確認を素通りできない:
+    """`nan` は比較が全部 False になるので、`confidence < 0.6` を素通りする。
+    保存ファイルにもモデルの返事にも入りうる。"""
+
+    def test_nanは確認に回る(self):
+        class NaNを返すLLM:
+            def complete(self, *a, **kw):
+                return {
+                    "content": '{"kind":"impossible","days":["2026-10-06"],'
+                    '"slots":["early"],"load":"normal","reason":"x","confidence":NaN}',
+                    "usage": {},
+                }
+
+        shop = build(start=date(2026, 10, 5))
+        p = Translator(NaNを返すLLM(), shop).translate(shop.staff[0].id, "入れません")
+
+        assert p.confidence == 0.0
+        assert p.needs_human, "nan で確認を素通りしている"
+
+    def test_範囲外は丸める(self):
+        from kumu.confidence import read_confidence
+
+        assert read_confidence(float("nan")) == 0.0
+        assert read_confidence(float("inf")) == 0.0
+        assert read_confidence(-1) == 0.0
+        assert read_confidence(2) == 1.0
