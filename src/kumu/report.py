@@ -118,6 +118,8 @@ def build_report(
             {
                 "staff_name": p.staff_name,
                 "note": p.source_note,
+                # 画面側が同じ識別子を作れるように、欄の日付も渡す
+                "about": p.about.isoformat() if p.about else "",
                 "kind": p.kind,
                 "days": [d.isoformat() for d in p.days],
                 "slots": p.slots,

@@ -101,6 +101,9 @@ class Proposal:
     confidence: float = 0.0
     injections: list[dict[str, str]] = field(default_factory=list)
     error: str | None = None
+    # どの日の欄に書かれたか。同じ文面でも欄が違えば読み取り結果が変わるので、
+    # 確認済みかどうかを覚えるときの材料にも要る
+    about: date | None = None
 
     @property
     def usable(self) -> bool:
@@ -201,6 +204,7 @@ class Translator:
             source_note=note,
             kind="unclear",
             injections=injections,
+            about=about,
         )
 
         if not note.strip():
@@ -295,7 +299,7 @@ def apply_proposals(
     for p in proposals:
         # 組み込みの hash() はプロセスごとに変わるので使えない。
         # 画面側と同じ作り方でないと、承認が突き合わない
-        key = proposal_key(p.staff_name, p.source_note)
+        key = proposal_key(p.staff_name, p.source_note, p.about)
         if p.needs_human and key not in approved_keys:
             pending.append(p)
             continue

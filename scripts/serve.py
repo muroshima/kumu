@@ -974,7 +974,7 @@ def render_review(me: str) -> str:
     # --- 確認待ちの希望
     pending_cards, archived = [], []
     for p in r.get("pending", []):
-        key = proposal_key(p["staff_name"], p["note"])
+        key = proposal_key(p["staff_name"], p["note"], p.get("about", ""))
         is_attack = bool(p.get("injections"))
         pill = (
             '<span class="pill no">反映していません</span>'

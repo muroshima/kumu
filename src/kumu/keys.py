@@ -25,10 +25,14 @@ def ack_key(*parts: object) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
 
-def proposal_key(staff_name: str, note: str) -> str:
+def proposal_key(staff_name: str, note: str, about: object = None) -> str:
     """自由文の読み取り結果1件に対する識別子。
 
     画面（確認待ちのカード）と組み立て（反映するかどうかの判定）で
     同じものを使う。片方だけ変えると、承認が突き合わなくなる。
+
+    `about` はその文章がどの日の欄に書かれたか。「この日は通院があります」は
+    欄が違えば別の日の話になるので、同じ文面でも別の読み取りになる。
+    ここに入れないと、片方を承認したときにもう片方まで通る。
     """
-    return ack_key("pending", staff_name, note)
+    return ack_key("pending", staff_name, note, about or "")

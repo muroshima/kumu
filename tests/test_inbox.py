@@ -415,3 +415,37 @@ class Test解き直すときは元の店のまま:
         assert other.rules == shop.rules
         assert other.staff == shop.staff
         assert other.start == shop.start and other.days == shop.days
+
+    def test_同じ文面でも欄の日付が違えば別の承認になる(self):
+        """「この日は通院があります」は欄が違えば別の日の話になる。
+        識別子が同じだと、片方を承認したときにもう片方まで通る。"""
+        from kumu.keys import proposal_key
+
+        a = proposal_key("田中", "この日は通院があります", date(2026, 10, 5))
+        b = proposal_key("田中", "この日は通院があります", date(2026, 10, 12))
+        assert a != b
+
+    def test_承認は欄の日付まで一致したものだけに効く(self):
+        from kumu.keys import proposal_key
+        from kumu.translate import Proposal, apply_proposals
+
+        shop = build()
+        d1, d2 = shop.dates[0], shop.dates[1]
+        mk = lambda d: Proposal(  # noqa: E731
+            staff_id=shop.staff[0].id,
+            staff_name=shop.staff[0].name,
+            source_note="この日は通院があります",
+            kind="impossible",
+            days=[d],
+            slots=["early"],
+            confidence=0.3,
+            about=d,
+        )
+        props = [mk(d1), mk(d2)]
+        approved = {proposal_key(shop.staff[0].name, "この日は通院があります", d1)}
+
+        added, _, pending = apply_proposals(shop, props, approved_keys=approved)
+
+        assert added, "承認したほうが反映されていない"
+        assert len(pending) == 1, "承認していないほうまで通っている"
+        assert pending[0].about == d2
