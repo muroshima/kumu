@@ -25,6 +25,7 @@ from kumu.model import (  # noqa: E402
     Wish,
 )
 from kumu.solver import ShiftSolver  # noqa: E402
+from kumu.verify import verify  # noqa: E402
 
 
 def small_shop(**over) -> Shop:
@@ -253,3 +254,38 @@ class Test法令と店のルールを分ける:
         for c in res.conflicts:
             kind = c.key.split(":")[0]
             assert kind not in ("days_in_a_row", "rest", "max_hours")
+
+
+class Test契約の最低時間は必ず守る:
+    """検査で違反として数えるものは、ソルバー側でも必ず守る側に置く。
+
+    片方だけ厳しいと、「解けた」と言いながら検査を通らないシフトが出る。
+    「満たせないなら返さない」が成り立たなくなる。
+    """
+
+    def test_解けたシフトは最低時間を満たす(self):
+        shop = build()
+        res = ShiftSolver(shop, time_limit_sec=30).solve()
+
+        assert res.feasible
+        v = verify(shop, res.schedule)
+        assert not [x for x in v.violations if x.kind == "under_min_hours"]
+
+    def test_最低時間は緩める候補に出る(self):
+        """人を増やさないと物理的に届かないこともある。
+        必ず守る側に置いたうえで、外す判断は店長に残す。"""
+        shop = build()
+        solver = ShiftSolver(shop, time_limit_sec=5)
+        keys = {r.key.split(":")[0] for r in solver.relaxables}
+
+        assert "minhours" in keys
+
+    def test_法令は緩める候補に出ない(self):
+        """最低時間を候補に足したせいで、外してはいけないものまで
+        候補に入っていないこと。"""
+        shop = build()
+        solver = ShiftSolver(shop, time_limit_sec=5)
+        labels = " ".join(r.label for r in solver.relaxables)
+
+        for word in ("連勤", "連続勤務", "勤務間隔", "インターバル", "休憩"):
+            assert word not in labels

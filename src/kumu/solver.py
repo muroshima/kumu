@@ -99,6 +99,7 @@ class ShiftSolver:
         self._c_rest_between_days()
         self._c_veteran()
         self._c_labor_cost()
+        self._c_min_hours()
         self._objective()
 
     def _works(self, staff_id: str, day: date, slot_key: str):
@@ -271,6 +272,35 @@ class ShiftSolver:
             Relaxable(key="cost", label=f"人件費を{limit:,}円以内に収める", literal=lit)
         )
 
+    def _c_min_hours(self) -> None:
+        """契約の最低時間。**必ず守る側に置く。**
+
+        ここを目的関数の罰則だけにしていると、届かないシフトが「制約を満たした解」
+        として返る。検査のほうは違反として数えるので、解けたと言いながら
+        検査を通らないシフトが出てくることになり、「満たせないなら返さない」が
+        成り立たない。
+
+        ただし店が人を増やさないと物理的に届かないこともあるので、
+        緩める候補には出す。外すかどうかは店長が決める。
+        """
+        for st in self.shop.staff:
+            if st.min_hours_per_week <= 0:
+                continue
+            hours = sum(
+                v * SLOT_BY_KEY[sk].hours
+                for (sid, _d, sk, _r), v in self.x.items()
+                if sid == st.id
+            )
+            lit = self.model.NewBoolVar(f"relax_minh_{st.id}")
+            self.model.Add(hours >= st.min_hours_per_week).OnlyEnforceIf(lit)
+            self.relaxables.append(
+                Relaxable(
+                    key=f"minhours:{st.id}",
+                    label=f"{st.name}さんに契約の最低 {st.min_hours_per_week}時間を渡す",
+                    literal=lit,
+                )
+            )
+
     def _objective(self) -> None:
         """通したい希望をできるだけ通す。ここは満たせなくても解は返る。"""
         terms = []
@@ -305,7 +335,8 @@ class ShiftSolver:
             elif req.wish is Wish.AVOID:
                 terms.append(sum(works) * int(COST_FORCED_AVOID * w * 10))
 
-        # 契約の下限時間に届かない分
+        # 契約の下限時間に届かない分。下限そのものは _c_min_hours で必ず守る。
+        # ここは、下限を外して解いたときにも不足を小さく保つために残す
         for s in self.shop.staff:
             if s.min_hours_per_week <= 0:
                 continue

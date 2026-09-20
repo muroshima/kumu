@@ -184,3 +184,36 @@ class Test時間切れと組めないは別:
 
         assert not res.result.timed_out
         assert res.applied, "組めない週で手を打たなくなっている"
+
+
+class Test契約の見直しは最後に回す:
+    def test_店の基準より後ろに置く(self):
+        """店が自分で決められること → 人に相談 → 契約の見直し、の順。"""
+        assert PRIORITY["veteran"] < PRIORITY["demand"] < PRIORITY["ng"] < PRIORITY["minhours"]
+
+    def test_外したら実際に条件が変わる(self):
+        """「外した」と言いながら何も変わっていない、が起きないこと。"""
+        from kumu.agent import _apply
+        from kumu.solver import Relaxable, ShiftSolver
+
+        shop = build()
+        target = next(s for s in shop.staff if s.min_hours_per_week > 0)
+        solver = ShiftSolver(shop, time_limit_sec=5)
+        r = next(x for x in solver.relaxables if x.key == f"minhours:{target.id}")
+
+        after = _apply(shop, r)
+
+        assert after.staff_by_id(target.id).min_hours_per_week == 0
+        assert shop.staff_by_id(target.id).min_hours_per_week > 0, "元の店を書き換えている"
+        assert [s.id for s in after.staff] == [s.id for s in shop.staff]
+
+    def test_本人の合意が要ることが文言に出る(self):
+        from kumu.agent import _relax_label
+        from kumu.solver import Relaxable, ShiftSolver
+
+        shop = build()
+        target = next(s for s in shop.staff if s.min_hours_per_week > 0)
+        solver = ShiftSolver(shop, time_limit_sec=5)
+        r = next(x for x in solver.relaxables if x.key == f"minhours:{target.id}")
+
+        assert "契約" in _relax_label(r)

@@ -262,3 +262,35 @@ class Test外が落ちても止まらない:
         tr = Translator(上限LLM(), shop)
         with pytest.raises(BudgetExceeded):
             tr.translate(shop.staff[0].id, "土曜は入れません")
+
+
+class Test知らない値は人に回す:
+    def test_知らないkindは黙って捨てない(self):
+        """日付も確信度もあるのに、to_requests() が何も作らず
+        確認にも回らない、が一番まずい消え方になる。"""
+
+        class 変な値を返すLLM:
+            def complete(self, *a, **kw):
+                return {
+                    "content": json.dumps(
+                        {
+                            "kind": "priority",  # 知らない値
+                            "days": ["2026-10-06"],
+                            "slots": ["early"],
+                            "load": "normal",
+                            "reason": "テスト",
+                            "confidence": 0.95,
+                        }
+                    ),
+                    "usage": {},
+                }
+
+        shop = build(start=date(2026, 10, 5))
+        p = Translator(変な値を返すLLM(), shop).translate(shop.staff[0].id, "入りたいです")
+
+        assert p.kind == "unclear", f"知らない値が残っている: {p.kind}"
+        assert p.needs_human, "読み取れていないのに人に回していない"
+
+        added, loads, pending = apply_proposals(shop, [p])
+        assert added == [], "知らない値のまま制約になっている"
+        assert len(pending) == 1, "確認にも回らず消えている"

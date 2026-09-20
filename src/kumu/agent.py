@@ -24,7 +24,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 from .explain import group_conflicts
@@ -33,7 +33,9 @@ from .solver import Relaxable, ShiftSolver, SolveResult
 
 # 動かしやすい順。人に頼むのが一番あとに来る。
 # 店が自分で決められることから試す
-PRIORITY = {"veteran": 0, "cost": 1, "demand": 2, "ng": 3}
+# 契約の最低時間を下げるのは、本人との約束を変える話なので最後。
+# 店の基準を下げる → 入れない日を相談する → 契約を見直す、の順
+PRIORITY = {"veteran": 0, "cost": 1, "demand": 2, "ng": 3, "minhours": 4}
 
 
 @dataclass
@@ -69,6 +71,8 @@ def _relax_label(r: Relaxable) -> str:
         return "人件費の上限を外す"
     if kind == "ng":
         return f"{r.label} を外す（本人への確認が要る）"
+    if kind == "minhours":
+        return f"{r.label} をあきらめる（本人との契約の見直しが要る）"
     return r.label
 
 
@@ -97,6 +101,16 @@ def _apply(shop: Shop, r: Relaxable) -> Shop:
                 for role in Role:
                     if role.value == role_name and d.required.get(role, 0) > 0:
                         d.required[role] -= 1
+    elif kind == "minhours" and rest:
+        # 約束した時間を渡せない、という提案になる。本人の合意が要るので
+        # 提案どまりにするのは他と同じだが、優先順位は最後に置いてある
+        staff = [
+            replace(st, min_hours_per_week=0) if st.id == rest[0] else st
+            for st in shop.staff
+        ]
+        return shop.with_changes(
+            staff=staff, demands=demands, requests=requests, rules=rules
+        )
     elif kind == "ng" and len(rest) >= 3:
         staff_id, day_iso, slot_key = rest[0], rest[1], rest[2]
         day = date.fromisoformat(day_iso)
