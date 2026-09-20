@@ -16,5 +16,8 @@ __pycache__/
 
 # 実行ジャーナル（実行ごとに変わる）
 runs/
+# ただし測定結果は README で主張の根拠にしているので残す
+!runs/compare.json
+!runs/attack.json
 
 .DS_Store
