@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from kumu.dummy import build  # noqa: E402
+from kumu.agent import describe, run as run_agent  # noqa: E402
 from kumu.inbox import apply_submissions, apply_trust  # noqa: E402
 from kumu.explain import (  # noqa: E402
     Explainer,
@@ -64,6 +65,10 @@ def main() -> int:
     parser.add_argument("--cheap", default=CHEAP_MODEL)
     parser.add_argument("--time-limit", type=float, default=20.0)
     parser.add_argument("--json", default="", help="結果をこのパスに保存する（画面が読む）")
+    parser.add_argument(
+        "--no-retry", action="store_true",
+        help="組めなかったときに緩和案を試さない（1回解いて終わり）",
+    )
     parser.add_argument(
         "--ignore-inbox", action="store_true", help="画面から出された希望と実績を読まない"
     )
@@ -163,7 +168,27 @@ def main() -> int:
         print()
 
     # ---------------------------------------------------------- 解く
-    result = ShiftSolver(shop, time_limit_sec=args.time_limit).solve()
+    if args.no_retry:
+        result = ShiftSolver(shop, time_limit_sec=args.time_limit).solve()
+        agent = None
+    else:
+        # 組めなかったらそこで止まらず、緩められる条件を順に試す
+        def on_step(step) -> None:
+            mark = "組めた" if step.feasible else f"組めない（矛盾 {step.conflicts}件）"
+            print(f"  {step.action} → {mark}", flush=True)
+
+        print("組んでいます")
+        agent = run_agent(
+            shop, time_limit_sec=args.time_limit, max_attempts=8, on_step=on_step
+        )
+        result = agent.result
+        print()
+        if agent.proposal:
+            print("そのままでは組めなかったので、次を外せば組めることを確かめました:")
+            for a in agent.applied:
+                print(f"  - {a}")
+            print("外してよいかは店長が決めてください。これは提案で、確定ではありません。")
+            print()
 
     if not result.feasible:
         print("=" * 68)
