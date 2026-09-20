@@ -58,9 +58,26 @@ def load_events(path: Path) -> list[TrustEvent]:
             continue
         try:
             d = json.loads(line)
-            out.append(TrustEvent(**d))
-        except (json.JSONDecodeError, TypeError):
+        except json.JSONDecodeError:
             continue
+        if not isinstance(d, dict):
+            continue
+        kind = str(d.get("kind", ""))
+        if kind not in EVENTS:
+            continue  # 知らないできごとは点を動かさない
+        # 記録された delta は使わない。no_show の行の delta を +100 に
+        # 書き換えるだけで、減点をなかったことにできてしまう。
+        # 何が起きたか（kind）だけを記録として受け取り、重みは EVENTS で決める
+        delta, label = EVENTS[kind]
+        out.append(
+            TrustEvent(
+                staff_id=str(d.get("staff_id", "")),
+                kind=kind,
+                delta=delta,
+                at=str(d.get("at", "")),
+                note=str(d.get("note", "") or label),
+            )
+        )
     return out
 
 

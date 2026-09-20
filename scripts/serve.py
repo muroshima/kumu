@@ -975,7 +975,7 @@ def render_review(me: str) -> str:
     # --- 確認待ちの希望
     pending_cards, archived = [], []
     for p in r.get("pending", []):
-        key = proposal_key(p["staff_name"], p["note"], p.get("about", ""))
+        key = proposal_key(p.get("staff_id", ""), p["note"], p.get("about", ""))
         is_attack = bool(p.get("injections"))
         pill = (
             '<span class="pill no">反映していません</span>'
@@ -1061,13 +1061,11 @@ def render_review(me: str) -> str:
             continue
         # 取り込み側と同じ関数で作る。保存されている値を使うと、承認済みの
         # ものから写すだけで確認を通っていない希望に承認が効いてしまう
-        # 名前は投稿ファイルの値ではなく、在籍者一覧から引いたものを使う
-        authoritative = next(
-            (t["name"] for t in staff if t["id"] == x.get("staff_id")), ""
-        )
-        if not authoritative:
+        # 在籍者一覧に無い id は表示しない。人は id で識別する
+        sid = str(x.get("staff_id", ""))
+        if not any(t["id"] == sid for t in staff):
             continue
-        key = submission_key(x, authoritative)
+        key = submission_key(x, sid)
         if key in acked:
             archived.append((key, f'{x["staff_name"]}さん', x["why"], acked[key].get("at", "")))
             continue

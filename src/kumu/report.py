@@ -116,6 +116,8 @@ def build_report(
         "staff": _staff(shop),
         "pending": [
             {
+                # 画面が同じ識別子を作れるように、表示名ではなく id も渡す
+                "staff_id": p.staff_id,
                 "staff_name": p.staff_name,
                 "note": p.source_note,
                 # 画面側が同じ識別子を作れるように、欄の日付も渡す

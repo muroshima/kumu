@@ -301,7 +301,7 @@ def apply_proposals(
     for p in proposals:
         # 組み込みの hash() はプロセスごとに変わるので使えない。
         # 画面側と同じ作り方でないと、承認が突き合わない
-        key = proposal_key(p.staff_name, p.source_note, p.about)
+        key = proposal_key(p.staff_id, p.source_note, p.about)
         if p.needs_human and key not in approved_keys:
             pending.append(p)
             continue

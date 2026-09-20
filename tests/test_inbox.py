@@ -181,7 +181,7 @@ class Test自由文から読み取ったぶん:
         path = write(tmp_path / "s.jsonl", [rec])
 
         added, _loads = apply_submissions(
-            shop, path, decisions={submission_key(rec, shop.staff_by_id(rec["staff_id"]).name): {"action": "accept"}}
+            shop, path, decisions={submission_key(rec, rec["staff_id"]): {"action": "accept"}}
         )
 
         assert added == 1
@@ -194,7 +194,7 @@ class Test自由文から読み取ったぶん:
         path = write(tmp_path / "s.jsonl", [rec])
 
         added, _loads = apply_submissions(
-            shop, path, decisions={submission_key(rec, shop.staff_by_id(rec["staff_id"]).name): {"action": "reject"}}
+            shop, path, decisions={submission_key(rec, rec["staff_id"]): {"action": "reject"}}
         )
 
         assert added == 0
@@ -345,7 +345,7 @@ class Test確認済みの識別子:
         code = (
             "import sys; sys.path.insert(0, 'src');"
             "from kumu.keys import proposal_key;"
-            "print(proposal_key('田中', '土曜は入れません'))"
+            "print(proposal_key('S01', '土曜は入れません'))"
         )
         got = {
             subprocess.run(
@@ -377,7 +377,7 @@ class Test確認済みの識別子:
         added, _, pending = apply_proposals(shop, [p])
         assert added == [] and len(pending) == 1
 
-        key = proposal_key(p.staff_name, p.source_note)
+        key = proposal_key(p.staff_id, p.source_note)
         added, _, pending = apply_proposals(shop, [p], approved_keys={key})
         assert added, "承認しても反映されていない"
         assert pending == []
@@ -433,8 +433,8 @@ class Test解き直すときは元の店のまま:
         識別子が同じだと、片方を承認したときにもう片方まで通る。"""
         from kumu.keys import proposal_key
 
-        a = proposal_key("田中", "この日は通院があります", date(2026, 10, 5))
-        b = proposal_key("田中", "この日は通院があります", date(2026, 10, 12))
+        a = proposal_key("S01", "この日は通院があります", date(2026, 10, 5))
+        b = proposal_key("S01", "この日は通院があります", date(2026, 10, 12))
         assert a != b
 
     def test_承認は欄の日付まで一致したものだけに効く(self):
@@ -454,7 +454,7 @@ class Test解き直すときは元の店のまま:
             about=d,
         )
         props = [mk(d1), mk(d2)]
-        approved = {proposal_key(shop.staff[0].name, "この日は通院があります", d1)}
+        approved = {proposal_key(shop.staff[0].id, "この日は通院があります", d1)}
 
         added, _, pending = apply_proposals(shop, props, approved_keys=approved)
 
@@ -502,7 +502,7 @@ class Test保存ファイルの判断を信じない:
         shop = build()
         # 別の（承認済みの）投稿の識別子を、指示文入りの投稿に写した状態
         legit = self._rec(shop, note="月曜は入れません", injections=[])
-        approved = submission_key(legit, shop.staff_by_id(legit["staff_id"]).name)
+        approved = submission_key(legit, legit["staff_id"])
         attack = self._rec(shop, ack_key=approved)
 
         path = tmp_path / "s.jsonl"
@@ -523,7 +523,7 @@ class Test保存ファイルの判断を信じない:
         path.write_text(json.dumps(rec, ensure_ascii=False) + "\n", encoding="utf-8")
 
         added, _ = apply_submissions(
-            shop, path, decisions={submission_key(rec, shop.staff_by_id(rec["staff_id"]).name): {"action": "accept"}}
+            shop, path, decisions={submission_key(rec, rec["staff_id"]): {"action": "accept"}}
         )
 
         assert added > 0, "店長が承認したのに反映されていない"
@@ -563,7 +563,6 @@ class Test保存ファイルの判断を信じない:
         from kumu.inbox import submission_key
 
         shop = build()
-        name = shop.staff[0].name
         # 確信度が低いので確認が要る＝承認を通らないと反映されないもの
         approved_rec = self._rec(
             shop,
@@ -572,7 +571,7 @@ class Test保存ファイルの判断を信じない:
             kind="impossible",
             confidence=0.3,
         )
-        key = submission_key(approved_rec, name)
+        key = submission_key(approved_rec, approved_rec["staff_id"])
         # 承認どおりなら通ることを先に確かめておく
         ok = tmp_path / "ok.jsonl"
         ok.write_text(json.dumps(approved_rec, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -601,7 +600,7 @@ class Test保存ファイルの判断を信じない:
             shop, note="月曜は入れません", injections=[], confidence=0.3
         )
         legit["staff_id"], legit["staff_name"] = a.id, a.name
-        key = submission_key(legit, a.name)
+        key = submission_key(legit, a.id)
 
         # 他人（b）が、承認済みレコードの中身をそのまま自分の ID で出す
         stolen = dict(legit)
@@ -641,3 +640,44 @@ class Test保存ファイルの判断を信じない:
         added, _ = apply_submissions(shop, path, decisions={})
 
         assert added == 0, "true を書くだけで確認を素通りできている"
+
+    def test_同姓同名でも承認が混ざらない(self):
+        from kumu.keys import proposal_key
+
+        a = proposal_key("S01", "土曜は入れません")
+        b = proposal_key("S02", "土曜は入れません")
+        assert a != b, "表示名が同じ人の承認が混ざる"
+
+
+class Test信頼ポイントの記録:
+    def test_記録のdeltaを信じない(self, tmp_path):
+        """no_show の行の delta を +100 に書き換えれば、減点を
+        なかったことにできてはいけない。"""
+        from kumu.trust import load_events
+
+        path = tmp_path / "t.jsonl"
+        path.write_text(
+            json.dumps(
+                {"staff_id": "S01", "kind": "no_show", "delta": 100, "at": "", "note": ""},
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        events = load_events(path)
+
+        assert len(events) == 1
+        assert events[0].delta < 0, "書き換えた delta がそのまま使われている"
+
+    def test_知らないできごとは点を動かさない(self, tmp_path):
+        from kumu.trust import load_events
+
+        path = tmp_path / "t.jsonl"
+        path.write_text(
+            json.dumps({"staff_id": "S01", "kind": "自分で作った加点", "delta": 999})
+            + "\n",
+            encoding="utf-8",
+        )
+
+        assert load_events(path) == []

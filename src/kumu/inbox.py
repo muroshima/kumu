@@ -69,19 +69,19 @@ def needs_human_for(rec: dict) -> bool:
     )
 
 
-def submission_key(rec: dict, staff_name: str) -> str:
+def submission_key(rec: dict, staff_id: str) -> str:
     """確認済みかどうかを突き合わせる識別子を、中身から作り直す。
 
     **実際に適用される値を全部材料にする。** 文面だけを材料にすると、
     承認された文面はそのままに kind や days を書き換えて、別の制約を
     通せてしまう。承認は「この内容ちょうど」に対して出すものにする。
 
-    名前は投稿ファイルの値ではなく、staff_id から引いた正しい名前を渡す。
-    記録の名前を使うと、他人の承認済みレコードを写してきて自分の
-    staff_id で適用する、ができてしまう。
+    人は表示名ではなく、在籍が確認できた staff_id で識別する。記録の名前を
+    使うと、他人の承認済みレコードを写してきて自分の staff_id で適用する、が
+    できてしまう。同姓同名がいる場合の取り違えも起きる。
     """
     return proposal_key(
-        staff_name,
+        staff_id,
         str(rec.get("note", "")),
         "|".join(
             [
@@ -161,8 +161,8 @@ def apply_submissions(
         # 書き換えるだけで、指示文が混ざったものや確信の低いものを確認なしで
         # 制約にできてしまう。承認済みの ack_key を写せば承認も流用できる。
         # どちらも中身から計算し直す
-        # 名前は記録ではなく、在籍が確認できた staff_id から引く
-        key = submission_key(rec, shop.staff_by_id(staff_id).name)
+        # 人は表示名ではなく、在籍が確認できた staff_id で識別する
+        key = submission_key(rec, staff_id)
         if key in rejected_keys:
             continue
         if needs_human_for(rec) and key not in accepted_keys:
