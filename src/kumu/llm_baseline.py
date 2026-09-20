@@ -145,7 +145,13 @@ def _to_schedule(shop: Shop, payload: dict) -> Schedule:
 
 
 def build_with_llm(
-    shop: Shop, llm: LLM, *, model: str, rounds: int = 2, max_tokens: int = 20000
+    shop: Shop,
+    llm: LLM,
+    *,
+    model: str,
+    rounds: int = 2,
+    max_tokens: int = 20000,
+    temperature: float = 0.0,
 ) -> BaselineResult:
     """モデルに組ませて、自己採点と修正を指定回数まわす。"""
     # 53コマぶんの JSON は長い。上限が足りないと途中で切れて、
@@ -173,7 +179,9 @@ def build_with_llm(
 
     for i in range(rounds + 1):
         try:
-            res = llm.complete(messages, model=model, max_tokens=max_tokens)
+            res = llm.complete(
+                messages, model=model, max_tokens=max_tokens, temperature=temperature
+            )
         except Exception:  # noqa: BLE001 — 比較対象なので、落ちたらそこまで
             break
 
@@ -201,7 +209,9 @@ def build_with_llm(
         messages.append({"role": "assistant", "content": res["content"]})
         messages.append({"role": "user", "content": REVIEW_PROMPT})
         try:
-            review = llm.complete(messages, model=model, max_tokens=2000)
+            review = llm.complete(
+                messages, model=model, max_tokens=2000, temperature=temperature
+            )
         except Exception:  # noqa: BLE001
             break
         result.calls += 1

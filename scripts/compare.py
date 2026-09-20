@@ -28,7 +28,7 @@ from kumu.dummy import build  # noqa: E402
 from kumu.llm import LLM, Budget  # noqa: E402
 from kumu.llm_baseline import build_with_llm, check  # noqa: E402
 from kumu.solver import ShiftSolver  # noqa: E402
-from kumu.verify import labor_cost, unmet_wants, verify  # noqa: E402
+from kumu.verify import labor_cost, unmet_wants, verify, wish_stats  # noqa: E402
 
 PRICING = ROOT / "data" / "pricing.json"
 
@@ -60,6 +60,10 @@ def main() -> int:
         help="カンマ区切り。1回だと運の可能性があるので複数で確かめる",
     )
     parser.add_argument("--rounds", type=int, default=2, help="自己採点と修正を何周させるか")
+    parser.add_argument(
+        "--trials", type=int, default=1,
+        help="同じモデルを何回試すか。1回では、守れたのが実力か偶然か分からない",
+    )
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--out", default="runs/compare.json")
     args = parser.parse_args()
@@ -75,20 +79,30 @@ def main() -> int:
     # ------------------------------------------------ A. モデルに組ませる
     runs = []
     for model in models:
+      for trial in range(args.trials):
+        label = model + (f"（{trial + 1}回目）" if args.trials > 1 else "")
         print("=" * 70)
-        print(f"A. モデルに組ませる（{model} / 生成→自己採点→修正 を{args.rounds}周）")
+        print(f"A. モデルに組ませる（{label} / 生成→自己採点→修正 を{args.rounds}周）", flush=True)
         print("=" * 70)
         llm = LLM(
             budget=Budget(max_calls=20, max_tokens=800_000),
             cache_dir=ROOT / ".cache" / "compare",
         )
         started = time.monotonic()
-        baseline = build_with_llm(shop, llm, model=model, rounds=args.rounds)
+        # 同じ入力でも毎回同じ答えになるとは限らない。そこを見たいので、
+        # 試行ごとに温度を変えて別の引きを起こす
+        temp = 0.0 if args.trials == 1 else round(0.2 * trial, 2)
+        baseline = build_with_llm(
+            shop, llm, model=model, rounds=args.rounds, temperature=temp
+        )
         sec = time.monotonic() - started
         chk = check(shop, baseline)
+        wish = (
+            wish_stats(shop, baseline.schedule) if baseline.schedule is not None else None
+        )
         cost = cost_of(model, baseline.prompt_tokens, baseline.completion_tokens, pricing)
 
-        print(f"  呼び出し {baseline.calls}回 / {sec:.1f}秒")
+        print(f"  呼び出し {baseline.calls}回 / {sec:.1f}秒", flush=True)
         print(f"  入力 {baseline.prompt_tokens:,} / 出力 {baseline.completion_tokens:,} トークン")
         if baseline.self_scores:
             print(f"  モデルの自己採点: {' → '.join(f'{x}点' for x in baseline.self_scores)}")
@@ -98,6 +112,11 @@ def main() -> int:
         else:
             print(f"  割り当て {chk['assignments']}コマ")
             print(f"  実際に検査した結果: {chk['summary']}")
+            if wish:
+                print(
+                    f"  希望を通せた割合: {wish['want_met']}/{wish['want_total']}"
+                    f"（{wish['want_met'] / max(1, wish['want_total']):.0%}）"
+                )
             if chk.get("by_kind"):
                 from kumu.verify import LABEL
 
@@ -108,6 +127,8 @@ def main() -> int:
         runs.append(
             {
                 "model": model,
+                "trial": trial + 1,
+                "temperature": temp,
                 "calls": baseline.calls,
                 "prompt_tokens": baseline.prompt_tokens,
                 "completion_tokens": baseline.completion_tokens,
@@ -119,6 +140,7 @@ def main() -> int:
                 "assignments": chk.get("assignments"),
                 "parse_errors": baseline.parse_errors,
                 "truncated": baseline.truncated,
+                "wish": wish,
             }
         )
 
@@ -143,19 +165,26 @@ def main() -> int:
     # ------------------------------------------------ 並べる
     print()
     print("=" * 70)
-    print(f"{'':30} {'違反':>8} {'呼出':>6} {'トークン':>10} {'金額':>10} {'時間':>8}")
+    b_wish = wish_stats(shop, result.schedule)
+    print(f"{'':26} {'違反':>7} {'希望':>9} {'呼出':>6} {'金額':>10} {'時間':>8}")
     for r in runs:
-        name = r["model"].split("/")[-1][:28]
+        name = r["model"].split("/")[-1][:20]
+        if args.trials > 1:
+            name = f"{name} #{r['trial']}"
         viol = f"{r['violations']}件" if r["violations"] is not None else "取れず"
         cost = f"${r['cost_usd']:.4f}" if r["cost_usd"] is not None else "—"
-        tok = r["prompt_tokens"] + r["completion_tokens"]
+        w = r.get("wish")
+        wl = (
+            f"{w['want_met']}/{w['want_total']}" if w else "—"
+        )
         print(
-            f"{name:30} {viol:>8} {str(r['calls']) + '回':>6} {tok:>10,} {cost:>10} "
+            f"{name:26} {viol:>7} {wl:>9} {str(r['calls']) + '回':>6} {cost:>10} "
             f"{format(r['seconds'], '.0f') + '秒':>8}"
         )
+    b_wish_label = f"{b_wish['want_met']}/{b_wish['want_total']}"
     print(
-        f"{'kumu（ソルバー）':30} {str(len(b_verify.violations)) + '件':>8} {'0回':>6} "
-        f"{0:>10,} {'$0.0000':>10} {format(b_sec, '.2f') + '秒':>8}"
+        f"{'kumu（ソルバー）':26} {str(len(b_verify.violations)) + '件':>7} "
+        f"{b_wish_label:>9} {'0回':>6} {'$0.0000':>10} {format(b_sec, '.2f') + '秒':>8}"
     )
     print()
     ok_runs = [r for r in runs if r["violations"] is not None]
@@ -163,12 +192,25 @@ def main() -> int:
         worst = max(r["violations"] for r in ok_runs)
         best = min(r["violations"] for r in ok_runs)
         total_cost = sum(r["cost_usd"] or 0 for r in ok_runs)
-        print(
-            f"モデルに組ませると、どれも制約を守れなかった（違反 {best}〜{worst}件）。"
-        )
-        print(f"かかった金額の合計 ${total_cost:.4f}、ソルバーは $0。")
-    print(f"ソルバーは {unmet_wants(shop, result.schedule)}件の希望が通らなかったが、"
-          f"守るべきことは1件も破っていない。")
+        if worst == 0:
+            print("この週では、モデルに組ませても制約違反は出なかった。")
+        else:
+            print(f"モデルに組ませると制約を守れないことがある（違反 {best}〜{worst}件）。")
+        met = [
+            r["wish"]["want_met"] / max(1, r["wish"]["want_total"])
+            for r in ok_runs
+            if r.get("wish")
+        ]
+        if met:
+            print(
+                f"希望を通せた割合はモデルが {min(met):.0%}〜{max(met):.0%}、"
+                f"ソルバーが {b_wish['want_met'] / max(1, b_wish['want_total']):.0%}。"
+            )
+        print(f"かかった金額はモデルが合計 ${total_cost:.4f}、ソルバーは $0。")
+    failed = [r for r in runs if r["violations"] is None]
+    if failed:
+        names = "・".join(r["model"].split("/")[-1] for r in failed)
+        print(f"シフトを取り出せなかったモデル: {names}")
 
     out = {
         "shop": shop.name,

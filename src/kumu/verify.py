@@ -51,6 +51,7 @@ LABEL = {
     "impossible_day": "入れないと出した日に入っている",
     "two_slots": "同じ日に2コマ入っている",
     "over_weekly_hours": "週の上限時間を超えている",
+    "under_min_hours": "契約の最低時間に届いていない",
     "too_many_days": "連勤の上限を超えている",
     "short_rest": "勤務間インターバルが足りない",
     "cannot_do_role": "できない持ち場に入っている",
@@ -163,6 +164,18 @@ def verify(shop: Shop, schedule: Schedule) -> VerifyResult:
                     staff.id,
                 )
             )
+        # 上限だけ見て下限を見ないと、必要人数ぶんだけ埋めて
+        # 「制約を満たしている」ことになってしまう。働く側にとっては
+        # 約束した時間がもらえないという、上限超過と同じくらい重い問題
+        if staff.min_hours_per_week and hours < staff.min_hours_per_week:
+            res.violations.append(
+                Violation(
+                    "under_min_hours",
+                    f"{staff.name}さんが {hours}時間"
+                    f"（契約は最低{staff.min_hours_per_week}時間）",
+                    staff.id,
+                )
+            )
 
         limit = min(rules.max_days_in_a_row, staff.max_days_in_a_row)
         worked = sorted(per_day.keys())
@@ -221,6 +234,24 @@ def verify(shop: Shop, schedule: Schedule) -> VerifyResult:
                 )
 
     return res
+
+
+def wish_stats(shop: Shop, schedule: Schedule) -> dict[str, int]:
+    """希望をどれだけ通せたか。制約ではないので違反には数えないが、
+    必要人数だけ埋めたシフトと、希望まで見たシフトの差はここに出る。"""
+    assigned = {(a.staff_id, a.day, a.slot_key) for a in schedule.assignments}
+    want = [r for r in shop.requests if r.wish is Wish.WANT]
+    avoid = [r for r in shop.requests if r.wish is Wish.AVOID]
+    return {
+        "want_total": len(want),
+        "want_met": sum(
+            1 for r in want if (r.staff_id, r.day, r.slot_key) in assigned
+        ),
+        "avoid_total": len(avoid),
+        "avoid_violated": sum(
+            1 for r in avoid if (r.staff_id, r.day, r.slot_key) in assigned
+        ),
+    }
 
 
 def unmet_wants(shop: Shop, schedule: Schedule) -> int:
