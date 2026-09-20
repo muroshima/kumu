@@ -194,24 +194,34 @@ def verify(shop: Shop, schedule: Schedule) -> VerifyResult:
                 )
             )
 
-        slot_of = {a.day: a.slot_key for a in mine}
+        # 1日1コマを前提に日付をキーにすると、同じ日に2コマ入っている
+        # 不正な出力で片方が上書きされ、翌日とのインターバル違反を見落とす。
+        # 比較の数字が過少になるので、その日の全コマを持つ
+        slots_of: dict[date, list[str]] = defaultdict(list)
+        for a in mine:
+            slots_of[a.day].append(a.slot_key)
+
         for d in worked:
             nxt = d.fromordinal(d.toordinal() + 1)
-            if nxt not in slot_of:
+            if nxt not in slots_of:
                 continue
-            a_end = SLOT_BY_KEY[slot_of[d]].end_hour
-            b_start = SLOT_BY_KEY[slot_of[nxt]].start_hour
-            rest = (24 - a_end) + b_start
-            if rest < rules.min_rest_hours:
-                res.violations.append(
-                    Violation(
-                        "short_rest",
-                        f"{staff.name}さんの {d:%m/%d}→{nxt:%m/%d} の間隔が{rest}時間"
-                        f"（{rules.min_rest_hours}時間必要）",
-                        staff.id,
-                        d,
-                    )
-                )
+            for end_key in slots_of[d]:
+                for start_key in slots_of[nxt]:
+                    a_end = SLOT_BY_KEY[end_key].end_hour
+                    b_start = SLOT_BY_KEY[start_key].start_hour
+                    rest = (24 - a_end) + b_start
+                    if rest < rules.min_rest_hours:
+                        res.violations.append(
+                            Violation(
+                                "short_rest",
+                                f"{staff.name}さんの {d:%m/%d}（"
+                                f"{SLOT_BY_KEY[end_key].label}）→ {nxt:%m/%d}（"
+                                f"{SLOT_BY_KEY[start_key].label}）の間隔が{rest}時間"
+                                f"（{rules.min_rest_hours}時間必要）",
+                                staff.id,
+                                d,
+                            )
+                        )
 
     # --- 経験者
     if rules.veteran_required_per_slot:

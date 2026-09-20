@@ -12,7 +12,12 @@ import json
 from datetime import date
 from pathlib import Path
 
+from .keys import proposal_key
 from .model import SLOTS, LoadPreference, Request, Role, Shop, Wish
+
+# グリッドで選んだ希望に付ける印。読み取りを通していないので、
+# あとからモデルに投げ直してはいけない
+GRID_NOTE = "画面から選択"
 from .trust import DEFAULT_TRUST, load_events, scores
 
 STATE_TO_WISH = {
@@ -30,10 +35,48 @@ def _read_jsonl(path: Path) -> list[dict]:
         if not line.strip():
             continue
         try:
-            out.append(json.loads(line))
+            rec = json.loads(line)
         except json.JSONDecodeError:
             continue  # 書き込み途中で切れた行は捨てる
+        # [] や null の行が混ざると、下で rec.get を呼んだところで落ちる。
+        # 壊れた投稿1行でシフト作成全体が止まるのは割に合わない
+        if isinstance(rec, dict):
+            out.append(rec)
     return out
+
+
+def needs_human_for(rec: dict) -> bool:
+    """確認が要るかを、保存されている中身から計算し直す。
+
+    `Proposal.needs_human` と同じ条件にしてある。片方だけ変えると、
+    画面で確認待ちに見えているものが確認なしで通る、が起きる。
+    """
+    kind = str(rec.get("kind", "unclear"))
+    try:
+        confidence = float(rec.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    usable = bool(rec.get("days")) or str(rec.get("load", "normal")) != "normal"
+    return bool(
+        rec.get("injections")
+        or rec.get("error")
+        or kind not in ("impossible", "avoid", "want")
+        or not usable
+        or confidence < 0.6
+    )
+
+
+def submission_key(rec: dict) -> str:
+    """確認済みかどうかを突き合わせる識別子を、中身から作り直す。
+
+    保存されている値をそのまま使うと、承認済みのものから写すだけで
+    確認を通っていない希望に承認が効いてしまう。
+    """
+    return proposal_key(
+        str(rec.get("staff_name", "")),
+        str(rec.get("note", "")),
+        str(rec.get("about", "")),
+    )
 
 
 def apply_submissions(
@@ -90,17 +133,22 @@ def apply_submissions(
                     day=day,
                     slot_key=slot_key,
                     wish=wish,
-                    note="画面から選択",
+                    note=GRID_NOTE,
                     role=role,
                 )
             )
             added += 1
 
         # 2) 自由文から読み取ったぶん
-        key = rec.get("ack_key") or ""
+        #
+        # 保存されたファイルの判断をそのまま信じない。needs_human を false に
+        # 書き換えるだけで、指示文が混ざったものや確信の低いものを確認なしで
+        # 制約にできてしまう。承認済みの ack_key を写せば承認も流用できる。
+        # どちらも中身から計算し直す
+        key = submission_key(rec)
         if key in rejected_keys:
             continue
-        if rec.get("needs_human") and key not in accepted_keys:
+        if needs_human_for(rec) and key not in accepted_keys:
             continue  # まだ確認が済んでいない
 
         for raw in rec.get("days") or []:

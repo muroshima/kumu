@@ -34,6 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from kumu.inbox import needs_human_for, submission_key  # noqa: E402
 from kumu.keys import ack_key, proposal_key  # noqa: E402
 
 RESULT = ROOT / "runs" / "result.json"
@@ -1054,13 +1055,13 @@ def render_review(me: str) -> str:
     open_end = open_start + timedelta(days=open_days - 1)
     open_cards = []
     for x in load_submissions():
-        if x["week"] != open_start.isoformat() or not x.get("needs_human"):
+        # 保存された needs_human ではなく、中身から計算し直す。
+        # false に書き換えただけで確認待ちの画面から消せてしまう
+        if x["week"] != open_start.isoformat() or not needs_human_for(x):
             continue
-        # 作り直すと、材料が1つでも違った時点で店長の決定と突き合わなくなる。
-        # 保存されているものをそのまま使う
-        key = x.get("ack_key") or ack_key(
-            "submission", x["staff_name"], x["note"], x.get("at", "")
-        )
+        # 取り込み側と同じ関数で作る。保存されている値を使うと、承認済みの
+        # ものから写すだけで確認を通っていない希望に承認が効いてしまう
+        key = submission_key(x)
         if key in acked:
             archived.append((key, f'{x["staff_name"]}さん', x["why"], acked[key].get("at", "")))
             continue

@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from kumu.dummy import build  # noqa: E402
 from kumu.agent import describe, run as run_agent  # noqa: E402
-from kumu.inbox import apply_submissions, apply_trust  # noqa: E402
+from kumu.inbox import GRID_NOTE, apply_submissions, apply_trust  # noqa: E402
 from kumu.explain import (  # noqa: E402
     Explainer,
     group_conflicts,
@@ -120,7 +120,14 @@ def main() -> int:
     if not args.no_llm:
         # 「この日は通院があります」の「この日」は、その希望が付いている日を指す。
         # 本文だけでは決まらないので、欄の日付も一緒に渡す
-        notes = [(r.staff_id, r.note, r.day) for r in shop.requests if r.note.strip()]
+        # グリッドで選んだぶんは読み取りを通さないと README で言っている。
+        # ここで note を見るだけだと apply_submissions が付けた「画面から選択」まで
+        # 拾ってしまい、呼び出しが無駄になるうえ、モデルの解釈で希望が二重になる
+        notes = [
+            (r.staff_id, r.note, r.day)
+            for r in shop.requests
+            if r.note.strip() and r.note != GRID_NOTE
+        ]
         # 同じ人・同じ文面・同じ日なら結果も同じなので使い回す
         seen: dict[tuple[str, str, object], object] = {}
         llm = LLM(
@@ -173,7 +180,14 @@ def main() -> int:
     else:
         # 組めなかったらそこで止まらず、緩められる条件を順に試す
         def on_step(step) -> None:
-            mark = "組めた" if step.feasible else f"組めない（矛盾 {step.conflicts}件）"
+            if step.feasible:
+                mark = "組めた"
+            elif "判断できなかった" in step.detail:
+                # 時間切れを「組めない（矛盾 0件）」と出すと、直しようのないものを
+                # 直しに行くことになる
+                mark = "時間内に判断できず"
+            else:
+                mark = f"組めない（矛盾 {step.conflicts}件）"
             print(f"  {step.action} → {mark}", flush=True)
 
         print("組んでいます")
