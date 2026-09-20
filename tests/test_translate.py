@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import sys
+
+import pytest
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -201,3 +203,62 @@ class Test現実のダミーデータ:
         shop = build(with_injection=True)
         found = [r for r in shop.requests if detect_injection(r.note)]
         assert len(found) >= 2, "仕込んだはずの指示文を拾えていない"
+
+
+class Test外が落ちても止まらない:
+    """ゲートウェイが落ちている間も、シフトを組む仕事は止めない。
+
+    読み取りは希望欄の文章を制約の候補にするだけで、解くところには
+    モデルを使っていない。つまり読み取りが全滅しても、グリッドで出された
+    希望だけでシフトは組める。落ちたぶんは店長の確認に回る。
+    """
+
+    def test_全部落ちても候補は人に回る(self):
+        class 落ちるLLM:
+            def complete(self, *a, **kw):
+                raise ConnectionError("gateway unreachable")
+
+        shop = build()
+        tr = Translator(落ちるLLM(), shop)
+        p = tr.translate(shop.staff[0].id, "土曜は用事があって入れません")
+
+        assert p.error, "落ちたことを記録していない"
+        assert p.needs_human, "読めていないのに人に回していない"
+        assert not p.usable, "読めていないのに反映できることになっている"
+
+    def test_落ちた希望は制約にならない(self):
+        class 落ちるLLM:
+            def complete(self, *a, **kw):
+                raise TimeoutError("timed out")
+
+        shop = build()
+        tr = Translator(落ちるLLM(), shop)
+        props = [
+            tr.translate(s.id, "来週は入れません") for s in shop.staff[:3]
+        ]
+        added, loads, pending = apply_proposals(shop, props)
+
+        assert added == [] and loads == []
+        assert len(pending) == 3, "落ちたぶんが確認に回っていない"
+
+    def test_落ちてもシフトは組める(self):
+        """読み取りが全滅しても、解く側はモデルを使っていないので動く。"""
+        from kumu.solver import ShiftSolver
+
+        shop = build()
+        res = ShiftSolver(shop, time_limit_sec=20).solve()
+
+        assert res.feasible, "読み取り抜きでシフトが組めなくなっている"
+
+    def test_上限超過は飲み込まない(self):
+        """止めるために置いた上限が、確認送りに化けていないこと。"""
+        from kumu.llm import BudgetExceeded
+
+        class 上限LLM:
+            def complete(self, *a, **kw):
+                raise BudgetExceeded("上限に達しました")
+
+        shop = build()
+        tr = Translator(上限LLM(), shop)
+        with pytest.raises(BudgetExceeded):
+            tr.translate(shop.staff[0].id, "土曜は入れません")

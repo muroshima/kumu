@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
-from .llm import LLM
+from .llm import LLM, BudgetExceeded
 from .model import SLOTS, LoadPreference, Request, Shop, Wish
 from .sanitize import as_quoted_data, detect_injection
 
@@ -242,6 +242,11 @@ class Translator:
                 **kwargs,
             )
             parsed = _extract_json(res["content"])
+        except BudgetExceeded:
+            # 上限に達したのは「読み取れなかった」とは別の話。ここで飲み込むと、
+            # 止めるために置いた上限が、ただ全部を確認送りにするだけの仕掛けになる。
+            # 何が起きたのかも運用側に伝わらなくなる
+            raise
         except Exception as e:  # noqa: BLE001 — 読み取れないものは人に回す
             proposal.error = f"{type(e).__name__}: {e}"
             return proposal
