@@ -1290,7 +1290,37 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _same_origin(self) -> bool:
+        """このページ自身からの送信かどうか。
+
+        画面のボタンは同一オリジンの fetch で application/json を送る。
+        別のサイトに置いたフォームからは、その形を作れない。
+
+        - `Content-Type` を application/json に限る。フォームが送れるのは
+          urlencoded / multipart / text-plain の3つだけなので、これで
+          プリフライトの要らない経路（enctype="text/plain" で本文を
+          JSON の形に組む手口）を塞ぐ
+        - `Origin` が付いていて自分自身と違うなら拒む。ブラウザは別オリジンへの
+          POST に必ず Origin を付けるので、ここを抜けられない。
+          curl などブラウザ以外からは Origin が付かないので、そこは通す
+
+        ここを開けておくと、店長がサーバーを起動したまま別のサイトを開いた
+        だけで、確認待ちを勝手に「この内容で反映」にできてしまう。
+        モデルが騙されても最後は人が確認する、という前提が崩れる。
+        """
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            return False
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return True
+        host = self.headers.get("Host") or ""
+        return origin.split("//", 1)[-1] == host
+
     def do_POST(self):  # noqa: N802
+        if not self._same_origin():
+            self.send_error(403, "cross-site request")
+            return
         if self.path == "/decide":
             length = int(self.headers.get("Content-Length", 0))
             try:
