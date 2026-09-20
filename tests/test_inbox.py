@@ -35,7 +35,8 @@ def submission(**over) -> dict:
         "staff_id": "S01",
         "staff_name": "田中 陽介",
         "picks": [],
-        "note": "",
+        # 自由文の読み取り結果を持つレコードなので、原文が無いことはありえない
+        "note": "来週の希望です",
         "kind": "unclear",
         "days": [],
         "slots": [],
@@ -681,3 +682,67 @@ class Test信頼ポイントの記録:
         )
 
         assert load_events(path) == []
+
+    def test_補足が空なら確認待ちに出さない(self):
+        """グリッドだけで出した希望は読み取りを通していない。
+        中身の無いカードが確認待ちに並び続けることになる。"""
+        from kumu.inbox import needs_human_for
+
+        assert needs_human_for({"note": "", "kind": "unclear", "confidence": 0.0}) is False
+
+    def test_原文のない読み取りは適用しない(self, tmp_path):
+        """補足が無いのに days だけある状態は、書き換えでしか作れない。"""
+        shop = build()
+        path = tmp_path / "s.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "week": shop.start.isoformat(),
+                    "staff_id": shop.staff[0].id,
+                    "staff_name": shop.staff[0].name,
+                    "note": "",
+                    "kind": "impossible",
+                    "days": [d.isoformat() for d in shop.dates[:3]],
+                    "slots": ["early"],
+                    "confidence": 0.99,
+                    "injections": [],
+                    "picks": [],
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        added, _ = apply_submissions(shop, path, decisions={})
+
+        assert added == 0, "原文のない読み取り結果が適用されている"
+
+    def test_グリッドで選んだぶんは通る(self, tmp_path):
+        """補足が空でも、グリッドの選択は読み取りを通していないので反映される。"""
+        shop = build()
+        path = tmp_path / "s.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "week": shop.start.isoformat(),
+                    "staff_id": shop.staff[0].id,
+                    "staff_name": shop.staff[0].name,
+                    "note": "",
+                    "picks": [
+                        {
+                            "day": shop.dates[0].isoformat(),
+                            "slot": "early",
+                            "state": "want",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        added, _ = apply_submissions(shop, path, decisions={})
+
+        assert added == 1

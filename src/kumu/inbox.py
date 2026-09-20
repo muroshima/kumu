@@ -56,6 +56,12 @@ def needs_human_for(rec: dict) -> bool:
     **指示文の有無も記録を信じず、原文から見直す。** injections の行を
     消すだけで、指示文が混ざった希望が確認なしで通ってしまう。
     """
+    # 補足が空なら、読み取ったものがそもそも無い。確認するものも無い。
+    # ここを見ないと、グリッドだけで出した希望が「中身の無い確認待ち」として
+    # 画面に並び続ける
+    if not str(rec.get("note", "")).strip():
+        return False
+
     kind = str(rec.get("kind", "unclear"))
     confidence = read_confidence(rec.get("confidence"))
     usable = bool(rec.get("days")) or str(rec.get("load", "normal")) != "normal"
@@ -156,6 +162,12 @@ def apply_submissions(
             added += 1
 
         # 2) 自由文から読み取ったぶん
+        #
+        # 補足が無いのに読み取り結果だけがある、という状態はありえない。
+        # 書き換えで作られたものなので、原文のないものは適用しない
+        if not str(rec.get("note", "")).strip():
+            continue
+
         #
         # 保存されたファイルの判断をそのまま信じない。needs_human を false に
         # 書き換えるだけで、指示文が混ざったものや確信の低いものを確認なしで
