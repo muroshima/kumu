@@ -26,3 +26,6 @@ runs/*
 # デモ録画の中間生成物（素材とTTSキャッシュ。出力は docs/demo.mp4 に置く）
 scripts/demo/output/
 scripts/demo/node_modules/
+
+# 登壇資料の中間生成物（原本は deck.html / talk_script.md）
+docs/pitch/_slides/
