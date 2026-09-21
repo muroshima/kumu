@@ -1,0 +1,31 @@
+# デモ動画のつくり方
+
+画面録画ソフトは使わない。Playwright が画面を録り、edge-tts が読み上げ、
+ffmpeg がまとめる。作り直しても同じものが出る。
+
+```bash
+npm install && npx playwright install chromium
+npx playwright test          # シーンごとに webm を録る
+python3 render.py demo       # ナレーションを載せて mp4 にする
+```
+
+出力は `output/demo.mp4`（リポジトリには `docs/demo.mp4` として置いてある）。
+
+## 作るときに引っかかったこと
+
+**シーンごとに `test()` を分ける。** Playwright の録画は、同じ Page の中で
+`page.goto()` を跨ぐと遷移後の画面が映像に残らない。画面を渡り歩くデモでは
+必ず踏む。分けておいて、あとで ffmpeg の concat でつなぐ。
+
+**ドラッグは1セルずつなぞる。** 始点と終点だけ `hover()` すると、間のセルに
+`mouseover` が飛ばない。希望のグリッドは `mouseover` で塗る作りなので、
+2コマしか選択されず予想金額が 0 円のままになる。
+
+**ナレーションの配置は `adelay` + `amix`。** `-itsoffset` は `amix` と一緒に
+使うと効かず、全部の読み上げが先頭に重なる。
+
+**尺はナレーションを先に決める。** 読み上げの長さを `ffprobe` で実測してから、
+`tests/demo.spec.ts` の `SCENE` を合わせる。逆順だと毎回ずれる。
+
+**画面の切り替えは、読み上げが終わってから。** 「組めません」と言っている
+最中に見出しをスクロールで流してしまい、肝心の一行が読まれない状態になった。

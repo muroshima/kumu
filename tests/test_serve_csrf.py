@@ -24,6 +24,24 @@ PORT = 8791
 BASE = f"http://127.0.0.1:{PORT}"
 
 
+@pytest.fixture(scope="module", autouse=True)
+def keep_runs():
+    """実データを書き換えたまま終わらない。
+
+    このテストは「修正を外すと落ちる」ことも確かめたくなる。外した状態で
+    走らせると攻撃が本当に通り、runs/ に検証用のゴミが残る。実際に一度
+    残して、デモ録画に映り込んだ。
+    """
+    targets = [ROOT / "runs" / "decisions.json", ROOT / "runs" / "acked.json"]
+    saved = {p: (p.read_bytes() if p.exists() else None) for p in targets}
+    yield
+    for p, data in saved.items():
+        if data is None:
+            p.unlink(missing_ok=True)
+        else:
+            p.write_bytes(data)
+
+
 @pytest.fixture(scope="module")
 def server(tmp_path_factory):
     proc = subprocess.Popen(

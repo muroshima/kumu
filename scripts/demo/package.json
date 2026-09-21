@@ -1,0 +1,11 @@
+{
+  "name": "kumu-demo",
+  "private": true,
+  "scripts": {
+    "record": "playwright test",
+    "record:demo": "playwright test tests/demo.spec.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
