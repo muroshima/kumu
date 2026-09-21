@@ -1,5 +1,5 @@
 ---
-title: "AIにシフトは組めるのか？：任せる仕事と任せない仕事を、6回測って決めた"
+title: "シフト作成エージェント：AIに任せる仕事と任せない仕事を、測って決めた"
 emoji: '🧩'
 type: 'tech'
 topics: ['ai', 'python', 'llm', 'ortools', 'hackathon']
