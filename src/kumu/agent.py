@@ -47,6 +47,8 @@ class Step:
     feasible: bool
     conflicts: int = 0
     seconds: float = 0.0
+    chosen_by: str = ""  # この一手を誰が選んだか（AI / 既定の順）
+    reason: str = ""  # AI が選んだ理由。**まだ確かめていない言い分**
 
 
 @dataclass
@@ -134,8 +136,14 @@ def run(
     time_limit_sec: float = 20.0,
     max_attempts: int = 6,
     on_step=None,
+    advisor=None,
 ) -> AgentResult:
-    """組めるまで手を打つ。打った手は全部記録に残す。"""
+    """組めるまで手を打つ。打った手は全部記録に残す。
+
+    `advisor` を渡すと、どの条件からゆずるかを AI が選ぶ。渡さないか、
+    AI が答えられなかったときは、決め打ちの順（PRIORITY）で進む。
+    どちらの場合も、選んだ手が効いたかどうかは解き直して確かめる。
+    """
     first = ShiftSolver(shop, time_limit_sec=time_limit_sec).solve()
     steps = [
         Step(
@@ -175,21 +183,35 @@ def run(
     for _ in range(max_attempts):
         if res.feasible:
             break
-        candidates = sorted(
-            res.conflicts, key=lambda r: PRIORITY.get(r.key.split(":")[0], 9)
-        )
-        # 同じ種類を繰り返しても代わり映えしないものは1回だけ
-        pick = None
-        for cand in candidates:
-            kind = cand.key.split(":")[0]
-            if kind in ("veteran", "cost") and kind in seen_once:
-                continue
-            pick = cand
-            if kind in ("veteran", "cost"):
-                seen_once.add(kind)
+
+        # 同じ種類を繰り返しても代わり映えしないものは、候補から落とす
+        usable = [
+            c
+            for c in res.conflicts
+            if not (c.key.split(":")[0] in ("veteran", "cost")
+                    and c.key.split(":")[0] in seen_once)
+        ]
+        if not usable:
             break
+
+        # どれからゆずるかを AI に選ばせる。選べなければ既定の順に戻す。
+        # 外の呼び出しが落ちても止まらないこと自体が、この作りの狙いでもある
+        pick, chosen_by, reason = None, "既定の順", ""
+        if advisor is not None:
+            advice = advisor.choose(current, usable)
+            if advice and advice.key:
+                pick = next((c for c in usable if c.key == advice.key), None)
+                if pick is not None:
+                    chosen_by, reason = "AI", advice.reason
+            if pick is None and advice is not None and advice.error:
+                reason = f"AIに聞けなかったので既定の順で進めた（{advice.error}）"
+
         if pick is None:
-            break
+            pick = sorted(usable, key=lambda r: PRIORITY.get(r.key.split(":")[0], 9))[0]
+
+        kind = pick.key.split(":")[0]
+        if kind in ("veteran", "cost"):
+            seen_once.add(kind)
 
         current = _apply(current, pick)
         res = ShiftSolver(current, time_limit_sec=time_limit_sec).solve()
@@ -204,6 +226,8 @@ def run(
             feasible=res.feasible,
             conflicts=len(res.conflicts),
             seconds=res.wall_time_sec,
+            chosen_by=chosen_by,
+            reason=reason,
         )
         steps.append(step)
         if on_step:
@@ -229,7 +253,11 @@ def describe(shop: Shop, agent: AgentResult) -> str:
             mark = "時間内に判断できず"
         else:
             mark = f"組めない（矛盾 {s.conflicts}件）"
-        lines.append(f"  {i}. {s.action} → {mark}  [{s.seconds:.2f}秒]")
+        who = f"［{s.chosen_by}］" if s.chosen_by else ""
+        lines.append(f"  {i}. {who}{s.action} → {mark}  [{s.seconds:.2f}秒]")
+        if s.reason:
+            # AI の言い分。効いたかどうかは上の「→」が計算で確かめた結果
+            lines.append(f"       AIの見立て: {s.reason}")
 
     if agent.feasible and agent.proposal:
         lines += [
@@ -237,6 +265,12 @@ def describe(shop: Shop, agent: AgentResult) -> str:
             "そのままでは組めなかったので、次を外せば組めることを確かめました。",
         ]
         lines += [f"  - {a}" for a in agent.applied]
+        if any(s.chosen_by == "AI" for s in agent.steps):
+            lines += [
+                "",
+                "どれからゆずるかは AI が選びました。選んだ結果が本当に組めるかは、"
+                "そのつど解き直して確かめています。",
+            ]
         lines += ["", "外してよいかは店長が決めてください。これは提案で、確定ではありません。"]
     elif agent.result.undecided:
         lines += [

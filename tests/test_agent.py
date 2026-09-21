@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import pytest
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -217,3 +218,124 @@ class Test契約の見直しは最後に回す:
         r = next(x for x in solver.relaxables if x.key == f"minhours:{target.id}")
 
         assert "契約" in _relax_label(r)
+
+
+class TestAIに選ばせる:
+    """どの条件からゆずるかは AI が決める。ただし決めてよい範囲と、
+    決めた結果の扱いは、こちらが押さえておく。"""
+
+    def _advisor(self, reply: str):
+        from kumu.advisor import Advisor
+
+        class 決め打ちLLM:
+            def complete(self, *a, **kw):
+                return {"content": reply, "usage": {}}
+
+        return Advisor(決め打ちLLM())
+
+    def test_AIが選んだ手が使われる(self):
+        from kumu.solver import ShiftSolver
+
+        shop = build(impossible_week=True)
+        first = ShiftSolver(shop, time_limit_sec=20).solve()
+        assert not first.feasible
+        # 既定の順では最初に選ばれない候補を、わざと指名させる
+        target = sorted(first.conflicts, key=lambda r: r.key)[-1]
+
+        res = run(
+            shop,
+            time_limit_sec=15,
+            max_attempts=6,
+            advisor=self._advisor(
+                '{"key": "%s", "reason": "この日は代わりが効かないため"}' % target.key
+            ),
+        )
+
+        assert res.steps[1].chosen_by == "AI"
+        assert "代わりが効かない" in res.steps[1].reason
+
+    def test_候補にないものを返してきたら従わない(self):
+        """AI が勝手な条件を返しても、そこにない手は打たない。"""
+        shop = build(impossible_week=True)
+        res = run(
+            shop,
+            time_limit_sec=15,
+            max_attempts=6,
+            advisor=self._advisor('{"key": "連勤の上限を外す", "reason": "そのほうが早い"}'),
+        )
+
+        assert res.steps[1].chosen_by == "既定の順"
+        for step in res.steps[1:]:
+            for word in ("連勤", "勤務間隔", "インターバル", "休憩"):
+                assert word not in step.action
+
+    def test_AIが落ちても止まらない(self):
+        """外の呼び出しが落ちても、決め打ちの順で最後まで進む。"""
+        from kumu.advisor import Advisor
+
+        class 落ちるLLM:
+            def complete(self, *a, **kw):
+                raise ConnectionError("gateway unreachable")
+
+        shop = build(impossible_week=True)
+        res = run(shop, time_limit_sec=15, max_attempts=8, advisor=Advisor(落ちるLLM()))
+
+        assert res.feasible, "AI が落ちただけで組めなくなっている"
+        assert all(s.chosen_by in ("", "既定の順") for s in res.steps)
+
+    def test_壊れた返事でも止まらない(self):
+        shop = build(impossible_week=True)
+        res = run(
+            shop, time_limit_sec=15, max_attempts=8,
+            advisor=self._advisor("すみません、よく分かりませんでした"),
+        )
+
+        assert res.feasible
+        assert res.steps[1].chosen_by == "既定の順"
+
+    def test_AIが選んでも確定はしない(self):
+        from kumu.solver import ShiftSolver
+
+        shop = build(impossible_week=True)
+        first = ShiftSolver(shop, time_limit_sec=20).solve()
+        target = sorted(first.conflicts, key=lambda r: r.key)[0]
+        res = run(
+            shop, time_limit_sec=15, max_attempts=8,
+            advisor=self._advisor('{"key": "%s", "reason": "痛みが小さいため"}' % target.key),
+        )
+
+        assert res.proposal is True, "AI の判断がそのまま確定になっている"
+
+    def test_AIが選んでも緩めていない条件は守る(self):
+        """AI に選ばせたぶん、守るべきものが崩れていないこと。"""
+        from kumu.solver import ShiftSolver
+        from kumu.verify import verify
+
+        shop = build(impossible_week=True)
+        first = ShiftSolver(shop, time_limit_sec=20).solve()
+        target = sorted(first.conflicts, key=lambda r: r.key)[0]
+        res = run(
+            shop, time_limit_sec=15, max_attempts=8,
+            advisor=self._advisor('{"key": "%s", "reason": "x"}' % target.key),
+        )
+        assert res.feasible
+
+        # ゆずった条件（必要人数・経験者・本人の不可・契約の下限）は破れて当然。
+        # 破れてはいけないのは、緩和候補にそもそも出していない法令由来のもの
+        v = verify(shop, res.result.schedule)
+        never = {"too_many_days", "short_rest", "over_weekly_hours",
+                 "two_slots", "cannot_do_role", "unknown_staff", "unknown_slot"}
+        broken = [x for x in v.violations if x.kind in never]
+        assert not broken, [x.detail for x in broken]
+
+    def test_上限超過は飲み込まない(self):
+        from kumu.advisor import Advisor
+        from kumu.llm import BudgetExceeded
+
+        class 上限LLM:
+            def complete(self, *a, **kw):
+                raise BudgetExceeded("上限に達しました")
+
+        shop = build(impossible_week=True)
+        with pytest.raises(BudgetExceeded):
+            run(shop, time_limit_sec=15, max_attempts=4, advisor=Advisor(上限LLM()))

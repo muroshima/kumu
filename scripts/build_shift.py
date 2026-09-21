@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from kumu.dummy import build  # noqa: E402
+from kumu.advisor import Advisor  # noqa: E402
 from kumu.agent import describe, run as run_agent  # noqa: E402
 from kumu.inbox import GRID_NOTE, apply_submissions, apply_trust  # noqa: E402
 from kumu.explain import (  # noqa: E402
@@ -188,11 +189,30 @@ def main() -> int:
                 mark = "時間内に判断できず"
             else:
                 mark = f"組めない（矛盾 {step.conflicts}件）"
-            print(f"  {step.action} → {mark}", flush=True)
+            who = f"［{step.chosen_by}］" if step.chosen_by else ""
+            print(f"  {who}{step.action} → {mark}", flush=True)
+            if step.reason:
+                print(f"      AIの見立て: {step.reason}", flush=True)
+
+        # どの条件からゆずるかは AI に選ばせる。選べなければ既定の順に戻るので、
+        # --no-llm でも、外が落ちていても、組む仕事自体は止まらない
+        advisor = None
+        if not args.no_llm:
+            advisor = Advisor(
+                LLM(
+                    budget=Budget(max_calls=12, max_tokens=60_000),
+                    cache_dir=ROOT / ".cache" / "llm",
+                ),
+                model=args.cheap,
+            )
 
         print("組んでいます")
         agent = run_agent(
-            shop, time_limit_sec=args.time_limit, max_attempts=8, on_step=on_step
+            shop,
+            time_limit_sec=args.time_limit,
+            max_attempts=8,
+            on_step=on_step,
+            advisor=advisor,
         )
         result = agent.result
         print()
