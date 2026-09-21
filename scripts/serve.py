@@ -209,6 +209,20 @@ h3.sec{font-size:12.5px;font-weight:600;color:var(--dim);margin:18px 0 8px;
   font-size:11.5px;white-space:nowrap;overflow:hidden;color:var(--ink-strong)}
 .bar.a{background:var(--a-bg)} .bar.b{background:var(--b-bg)} .bar.c{background:var(--c-bg)}
 .bar .role{color:var(--dim);margin-left:5px;font-size:10.5px}
+.warn-bar{margin:18px 0 0;background:var(--warn-50);border:1px solid var(--warn-line);
+ border-radius:12px;padding:13px 16px;font-size:13px;color:var(--warn-600);line-height:1.6}
+.warn-bar b{color:var(--ink-strong)}
+.tried{margin-top:20px;background:var(--card);border:1px solid var(--line);
+ border-radius:14px;padding:18px 20px}
+.tried h3{font-size:14px;color:var(--ink-strong);margin:0 0 12px}
+.tried ol{margin:0;padding-left:22px}
+.tried li{margin:0 0 12px;font-size:13px;color:var(--ink);line-height:1.55}
+.tried .by{display:inline-block;font-size:10.5px;font-weight:700;color:var(--brand-700);
+ background:var(--brand-50);border:1px solid var(--brand-100);border-radius:5px;
+ padding:1px 6px;margin-right:8px;vertical-align:1px}
+.tried .act{margin-right:8px}
+.tried .why{margin-top:5px;font-size:12px;color:var(--dim);line-height:1.6}
+.tried .note{margin:12px 0 0;font-size:11.5px;color:var(--faint)}
 .bar .act{margin-left:auto;font-size:10.5px;color:var(--brand-700);text-decoration:none;
   padding:1px 7px;border-radius:5px;background:rgb(255 255 255 / .6);
   transition:transform 140ms var(--ease)}
@@ -506,6 +520,43 @@ def render_mine(me: str) -> str:
     )
 
 
+def try_log(r: dict) -> str:
+    """組めなかったときに何を試したかを見せる。
+
+    結果だけ出されても、何もせず諦めたのか、手を尽くしたのかが分からない。
+    誰がその手を選んだのか（AI か、決め打ちの順か）も一緒に出す。
+    AI の見立ては言い分なので、当たっていたかどうかは右の結果が示す。
+    """
+    steps = r.get("steps") or []
+    if len(steps) <= 1:
+        return ""
+    rows = []
+    for st in steps:
+        if st.get("feasible"):
+            mark = '<span class="pill yes">組めた</span>'
+        elif st.get("action") == "ここで止める":
+            mark = '<span class="pill">止めた</span>'
+        else:
+            mark = f'<span class="pill no">矛盾 {st.get("conflicts", 0)}件</span>'
+        who = (
+            f'<span class="by">{esc(st["chosen_by"])}</span>'
+            if st.get("chosen_by")
+            else ""
+        )
+        why = (
+            f'<div class="why">{esc(st["reason"])}</div>' if st.get("reason") else ""
+        )
+        rows.append(
+            f'<li>{who}<span class="act">{esc(st["action"])}</span>{mark}{why}</li>'
+        )
+    return (
+        '<div class="tried"><h3>組めるようにするために試したこと</h3>'
+        f'<ol>{"".join(rows)}</ol>'
+        '<p class="note">どれをゆずるかは AI が選び、本当に組めるかは'
+        'そのつど解き直して確かめています。</p></div>'
+    )
+
+
 # ---------------------------------------------------------------- 交代
 
 
@@ -620,6 +671,7 @@ def render_all(me: str, path: Path = RESULT) -> str:
 
     if not r.get("feasible"):
         conflicts = "".join(f"<li>{esc(c)}</li>" for c in r.get("conflicts", []))
+        tried = try_log(r)
         fixes = "".join(f"<li>{esc(s)}</li>" for s in r.get("suggestions", []))
         return page(
             "全員のシフト",
@@ -632,6 +684,7 @@ def render_all(me: str, path: Path = RESULT) -> str:
   <div class="fix"><b>どれか1つを動かせば組めます</b>
     <ul class="fix" style="margin:0;padding-left:20px">{fixes}</ul></div>
 </div>
+{tried}
 <p><a class="btn" href="/all">組めた週を見る</a></p>""",
             me=me,
             staff=staff,
@@ -674,12 +727,22 @@ def render_all(me: str, path: Path = RESULT) -> str:
         else ""
     )
 
+    # 条件をゆずって組めた週は、そのことを先に言う。
+    # 何ごともなく組めた週と同じ顔で出すと、ゆずった事実が伝わらない
+    proposed = ""
+    if r.get("proposal"):
+        proposed = (
+            '<div class="warn-bar">そのままでは組めなかったので、'
+            "いくつかの条件をゆずれば組めることを確かめました。"
+            "<b>ゆずってよいかは店長が決めてください。</b>これは提案で、確定ではありません。</div>"
+        )
+
     return page(
         "全員のシフト",
         "all",
         f'<h1>全員のシフト</h1>'
         f'<p class="sub">{esc(week_label(date.fromisoformat(r["start"]), r["days"]))}</p>'
-        f'{legend}{"".join(days)}{link}',
+        f'{proposed}{try_log(r)}{legend}{"".join(days)}{link}',
         me=me,
         staff=staff,
     )

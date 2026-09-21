@@ -238,7 +238,10 @@ def main() -> int:
         print()
         print(f"（{result.status} / {result.wall_time_sec}秒）")
         if args.json:
-            save(build_report(shop, result, pending=pending), ROOT / args.json)
+            save(
+                build_report(shop, result, pending=pending, agent=agent),
+                ROOT / args.json,
+            )
             print(f"結果を {args.json} に保存しました")
         return 2
 
@@ -285,7 +288,9 @@ def main() -> int:
         def progress(i: int, total: int) -> None:
             print(f"  {i}/{total}", end="\r", flush=True)
 
-        report = build_report(shop, result, pending=pending, on_progress=progress)
+        report = build_report(
+            shop, result, pending=pending, on_progress=progress, agent=agent
+        )
         save(report, ROOT / args.json)
         print(f"\n結果を {args.json} に保存しました")
     return 0

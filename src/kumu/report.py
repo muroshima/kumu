@@ -101,6 +101,7 @@ def build_report(
     pending: list[Proposal] | None = None,
     explain_limit: int = 12,
     on_progress=None,
+    agent=None,
 ) -> dict[str, Any]:
     """画面が読む JSON を作る。"""
     pending = pending or []
@@ -112,6 +113,19 @@ def build_report(
         # 組めないのか、まだ分かっていないのかは、画面でも書き分ける
         "undecided": result.undecided,
         "solver_status": result.status,
+        # 組めなかったときに打った手。誰が選んだかと、その見立ても渡す
+        "steps": [
+            {
+                "action": st.action,
+                "feasible": st.feasible,
+                "conflicts": st.conflicts,
+                "chosen_by": st.chosen_by,
+                "reason": st.reason,
+                "seconds": round(st.seconds, 2),
+            }
+            for st in (agent.steps if agent else [])
+        ],
+        "proposal": bool(agent.proposal) if agent else False,
         "solve_sec": result.wall_time_sec,
         "staff": _staff(shop),
         "pending": [
