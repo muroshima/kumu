@@ -39,6 +39,8 @@ from kumu.keys import ack_key, proposal_key  # noqa: E402
 
 RESULT = ROOT / "runs" / "result.json"
 IMPOSSIBLE = ROOT / "runs" / "impossible.json"
+# AI が条件をゆずって組めた形。組めない週とは別の見え方になる
+PROPOSAL = ROOT / "runs" / "proposal.json"
 ACKED = ROOT / "runs" / "acked.json"
 DECISIONS = ROOT / "runs" / "decisions.json"  # 確認待ちに対して店長が決めたこと
 SUBMISSIONS = ROOT / "runs" / "submissions.jsonl"  # まだ組んでいない週に出された希望
@@ -1340,7 +1342,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ("/", "/index.html"):
             self._send(render_mine(me))
         elif u.path == "/all":
-            path = IMPOSSIBLE if q.get("week", [""])[0] == "impossible" else RESULT
+            wk = q.get("week", [""])[0]
+            path = {"impossible": IMPOSSIBLE, "proposal": PROPOSAL}.get(wk, RESULT)
             self._send(render_all(me, path))
         elif u.path == "/request":
             self._send(render_request(me))

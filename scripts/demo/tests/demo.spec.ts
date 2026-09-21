@@ -12,12 +12,13 @@ import { test, expect, Page } from "@playwright/test";
  */
 
 const SCENE = {
-  request: 13.0,
-  all: 16.2,
-  impossible: 29.2,
-  review: 25.1,
-  mine: 8.0,
-  swap: 9.5,
+  request: 12.8,
+  all: 23.6,
+  impossible: 19.8,
+  aiwork: 41.8,
+  review: 25.2,
+  mine: 10.2,
+  swap: 7.8,
 };
 
 /** その時間ぶん画面を見せる。1シーンの残り時間を使い切るのに使う。 */
@@ -67,8 +68,8 @@ test("01 希望を出す", async ({ page }) => {
 test("02 全員のシフト", async ({ page }) => {
   const t0 = Date.now();
   await page.goto("/all");
-  await page.waitForTimeout(1500);
-  await slowScroll(page, 1700, 11000);
+  await page.waitForTimeout(1800);
+  await slowScroll(page, 2600, 18000);
   await dwell(page, t0, SCENE.all);
 });
 
@@ -76,16 +77,30 @@ test("03 組めない週", async ({ page }) => {
   const t0 = Date.now();
   await page.goto("/all?week=impossible");
   await expect(page.locator("h1")).toContainText("組めません");
-  // ここが作品の核。ナレーションが「クムは出しません」と言い終わるまで
-  // 見出しを画面に残す。先にスクロールすると、肝心の一行が読まれない
-  await page.waitForTimeout(17000);
-  await slowScroll(page, 200, 2000);
-  await page.waitForTimeout(4500);
-  await slowScroll(page, 430, 2000);
+  // ナレーションが「シフトを出しません」と言い終わるまで見出しを残す。
+  // 先にスクロールすると、肝心の一行が読まれない
+  await page.waitForTimeout(11000);
+  await slowScroll(page, 230, 2500);
   await dwell(page, t0, SCENE.impossible);
 });
 
-test("04 確認待ち", async ({ page }) => {
+test("04 AIがゆずる条件を決める", async ({ page }) => {
+  const t0 = Date.now();
+  await page.goto("/all?week=proposal");
+  await expect(page.locator(".tried")).toBeVisible();
+  // AI の見立てを1つずつ読ませる。ここが今回いちばん見せたいところ
+  await page.waitForTimeout(6000);
+  await slowScroll(page, 150, 2500);
+  await page.waitForTimeout(7000);
+  await slowScroll(page, 330, 2500);
+  await page.waitForTimeout(7000);
+  await slowScroll(page, 520, 2500);
+  await page.waitForTimeout(6000);
+  await slowScroll(page, 700, 2500);
+  await dwell(page, t0, SCENE.aiwork);
+});
+
+test("05 確認待ち", async ({ page }) => {
   const t0 = Date.now();
   await page.goto("/review");
   await page.waitForTimeout(2500);
@@ -98,15 +113,15 @@ test("04 確認待ち", async ({ page }) => {
   await dwell(page, t0, SCENE.review);
 });
 
-test("05 自分のシフト", async ({ page }) => {
+test("06 自分のシフト", async ({ page }) => {
   const t0 = Date.now();
   await page.goto("/");
-  await page.waitForTimeout(2200);
+  await page.waitForTimeout(3500);
   await page.locator("a", { hasText: "交代を頼む" }).first().hover();
   await dwell(page, t0, SCENE.mine);
 });
 
-test("06 代われる人を探す", async ({ page }) => {
+test("07 代われる人を探す", async ({ page }) => {
   const t0 = Date.now();
   await page.goto("/swap?me=S01&date=2026-10-08&slot=mid");
   await expect(page.locator(".who")).toContainText("代われます");
