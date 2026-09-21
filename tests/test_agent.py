@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from kumu.agent import PRIORITY, run  # noqa: E402
+from kumu.agent import PRIORITY, describe, run  # noqa: E402
 from kumu.dummy import build  # noqa: E402
 from kumu.model import SLOTS, Demand, Request, Role, Rules, Shop, Staff, Wish  # noqa: E402
 from kumu.verify import verify  # noqa: E402
@@ -339,3 +339,73 @@ class TestAIに選ばせる:
         shop = build(impossible_week=True)
         with pytest.raises(BudgetExceeded):
             run(shop, time_limit_sec=15, max_attempts=4, advisor=Advisor(上限LLM()))
+
+
+class TestAIが前の結果を見る:
+    """一手ごとに聞き直すだけでは、同じ方向に外し続ける。
+    前の手で何が起きたかを見て、次を決められること。"""
+
+    def test_前の結果が次の判断材料として渡る(self):
+        from kumu.advisor import Advisor
+
+        seen = []
+
+        class 記録するLLM:
+            def complete(self, messages, **kw):
+                seen.append(messages[-1]["content"])
+                return {"content": '{"key":"STOP","reason":"記録用"}', "usage": {}}
+
+        shop = build(impossible_week=True)
+        run(shop, time_limit_sec=15, max_attempts=4, advisor=Advisor(記録するLLM()))
+
+        assert seen, "AI に一度も聞いていない"
+        assert "ゆずれる候補" in seen[0]
+
+    def test_増減の向きが文章として渡る(self):
+        from kumu.advisor import _history
+
+        text = "\n".join(
+            _history(
+                [
+                    {"action": "A をやめる", "before": 12, "after": 8, "feasible": False},
+                    {"action": "B を1人減らす", "before": 8, "after": 58, "feasible": False},
+                ]
+            )
+        )
+
+        assert "減った" in text and "増えた" in text
+        assert "この方向は外れ" in text
+
+    def test_AIが止めたら組めたことにしない(self):
+        """ゆずり続ければいつかは組める。それを組めたと言わないための判断。"""
+        from kumu.advisor import Advisor
+
+        class 止めるLLM:
+            def complete(self, *a, **kw):
+                return {
+                    "content": '{"key":"STOP","reason":"これ以上は店の基準を下げすぎる"}',
+                    "usage": {},
+                }
+
+        shop = build(impossible_week=True)
+        res = run(shop, time_limit_sec=15, max_attempts=8, advisor=Advisor(止めるLLM()))
+
+        assert not res.feasible, "止めたのに組めたことになっている"
+        assert res.applied == [], "止めると言いながら条件を外している"
+        assert any(s.action == "ここで止める" for s in res.steps)
+        assert "基準を下げすぎる" in describe(shop, res)
+
+    def test_STOPは候補になくても受け入れる(self):
+        """止めるのは安全側に倒れる判断なので、候補照合の対象にしない。"""
+        from kumu.advisor import Advisor
+        from kumu.solver import ShiftSolver
+
+        class 止めるLLM:
+            def complete(self, *a, **kw):
+                return {"content": '{"key":"stop","reason":"小文字でも止める"}', "usage": {}}
+
+        shop = build(impossible_week=True)
+        res = run(shop, time_limit_sec=15, max_attempts=6, advisor=Advisor(止めるLLM()))
+
+        assert any(s.action == "ここで止める" for s in res.steps)
+        assert res.result.conflicts, "止めたときに理由を返していない"

@@ -42,11 +42,22 @@ SYSTEM_PROMPT = """あなたは飲食店の店長を手伝う担当です。
 - 本人と交わした約束（契約の最低時間）を変えるのは最後
 - 同じ日に複数の候補があるなら、その日の事情を見て選ぶ
 
+前に試した手があるときは、その結果を見てから決めてください。
+
+- ゆずったのに、ぶつかっている条件が**増えた**なら、その方向は外れています。
+  同じ系統を続けず、別の系統（人員の要件 / 経験者の要件 / 本人の希望 / 契約）に移ってください。
+- 減っているなら、その方向は当たりです。近いものを続けてください。
+
+**ゆずり続けるべきでないと思ったら、止めてください。** 店の基準を下げ続ければ
+いつかは組めますが、それは組めたことになりません。人に返すほうがよい状況なら、
+key に "STOP" と書いてください。
+
 出力は次の JSON だけ。前置きも説明も付けません。
 
-{"key": "<候補のキーをそのまま>", "reason": "<なぜそれを選んだか。日本語で1〜2文>"}
+{"key": "<候補のキーをそのまま、または STOP>", "reason": "<なぜそう決めたか。日本語で1〜2文>"}
 
-key は必ず、渡された候補の中から選んでください。候補にないものを書いてはいけません。"""
+key は必ず、渡された候補の中から選ぶか、"STOP" にしてください。
+候補にないものを書いてはいけません。"""
 
 
 @dataclass
@@ -57,6 +68,7 @@ class Advice:
     reason: str
     raw: str = ""
     error: str | None = None
+    stop: bool = False  # これ以上ゆずらず、人に返すべきだという判断
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -115,15 +127,40 @@ def _extra(shop: Shop, r: Relaxable) -> str:
     return ""
 
 
-def _context(shop: Shop, candidates: list[Relaxable]) -> str:
+def _history(history: list[dict]) -> list[str]:
+    """ここまで試した手と、その結果。
+
+    ぶつかる条件が増えたのか減ったのかを一緒に見せる。件数だけ渡しても
+    方向が当たっていたかは分からない。
+    """
+    if not history:
+        return []
+    lines = ["## ここまでに試したこと"]
+    for i, h in enumerate(history, 1):
+        before, after = h["before"], h["after"]
+        if h["feasible"]:
+            verdict = "組めた"
+        elif after > before:
+            verdict = f"ぶつかる条件が {before}件 → {after}件 に**増えた**（この方向は外れ）"
+        elif after < before:
+            verdict = f"ぶつかる条件が {before}件 → {after}件 に減った（方向は当たり）"
+        else:
+            verdict = f"ぶつかる条件が {before}件 のまま変わらない"
+        lines.append(f"  {i}. {h['action']} → {verdict}")
+    lines.append("")
+    return lines
+
+
+def _context(shop: Shop, candidates: list[Relaxable], history: list[dict]) -> str:
     vets = [s.name for s in shop.staff if s.is_veteran]
     lines = [
         "## 店の状況",
         f"  スタッフ {len(shop.staff)}人（うち経験者 {len(vets)}人）",
         f"  対象の週 {shop.start:%Y-%m-%d} から {shop.days}日",
         "",
-        "## ゆずれる候補",
     ]
+    lines += _history(history)
+    lines += ["## ゆずれる候補"]
     for r in candidates:
         lines.append(f"  key={r.key}")
         lines.append(f"    {r.label}")
@@ -146,8 +183,18 @@ class Advisor:
         self.llm = llm
         self.model = model
 
-    def choose(self, shop: Shop, candidates: list[Relaxable]) -> Advice | None:
-        """候補から一つ選ぶ。選べなかったら None（呼び出し側が既定の順に戻す）。"""
+    def choose(
+        self,
+        shop: Shop,
+        candidates: list[Relaxable],
+        *,
+        history: list[dict] | None = None,
+    ) -> Advice | None:
+        """候補から一つ選ぶ。選べなかったら None（呼び出し側が既定の順に戻す）。
+
+        `history` にはここまで試した手とその結果が入る。前の手で
+        ぶつかる条件が増えたなら、その方向は外れている。
+        """
         if not candidates:
             return None
 
@@ -159,7 +206,7 @@ class Advisor:
             res = self.llm.complete(
                 [
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": _context(shop, candidates)},
+                    {"role": "user", "content": _context(shop, candidates, history or [])},
                 ],
                 **kwargs,
             )
@@ -171,6 +218,10 @@ class Advisor:
             return Advice(key="", reason="", error=f"{type(e).__name__}: {e}")
 
         key = str(parsed.get("key", ""))
+        reason = str(parsed.get("reason", ""))[:200]
+        if key.strip().upper() == "STOP":
+            return Advice(key="", reason=reason, raw=res["content"][:200], stop=True)
+
         valid = {r.key for r in candidates}
         if key not in valid:
             # 候補にないものを返してきた。従わない
@@ -181,4 +232,4 @@ class Advisor:
                 error=f"候補にないキーを返した: {key[:60]!r}",
             )
 
-        return Advice(key=key, reason=str(parsed.get("reason", ""))[:200], raw=res["content"][:200])
+        return Advice(key=key, reason=reason, raw=res["content"][:200])

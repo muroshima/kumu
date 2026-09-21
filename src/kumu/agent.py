@@ -179,6 +179,8 @@ def run(
     res = first
     applied: list[str] = []
     seen_once: set[str] = set()
+    history: list[dict] = []  # 打った手とその結果。次の一手を決める材料にする
+    stopped_by_ai = False
 
     for _ in range(max_attempts):
         if res.feasible:
@@ -198,7 +200,24 @@ def run(
         # 外の呼び出しが落ちても止まらないこと自体が、この作りの狙いでもある
         pick, chosen_by, reason = None, "既定の順", ""
         if advisor is not None:
-            advice = advisor.choose(current, usable)
+            advice = advisor.choose(current, usable, history=history)
+            if advice and advice.stop:
+                # ゆずり続ければいつかは組める。それを組めたと言わないための判断。
+                # 止めるのは安全側に倒れるので、そのまま受け入れる
+                stopped_by_ai = True
+                steps.append(
+                    Step(
+                        action="ここで止める",
+                        detail="これ以上ゆずらず、店長に返すべきだと判断した",
+                        feasible=False,
+                        conflicts=len(res.conflicts),
+                        chosen_by="AI",
+                        reason=advice.reason,
+                    )
+                )
+                if on_step:
+                    on_step(steps[-1])
+                break
             if advice and advice.key:
                 pick = next((c for c in usable if c.key == advice.key), None)
                 if pick is not None:
@@ -213,9 +232,18 @@ def run(
         if kind in ("veteran", "cost"):
             seen_once.add(kind)
 
+        before = len(res.conflicts)
         current = _apply(current, pick)
         res = ShiftSolver(current, time_limit_sec=time_limit_sec).solve()
         applied.append(_relax_label(pick))
+        history.append(
+            {
+                "action": _relax_label(pick),
+                "before": before,
+                "after": len(res.conflicts),
+                "feasible": res.feasible,
+            }
+        )
         step = Step(
             action=_relax_label(pick),
             detail=(
@@ -233,7 +261,7 @@ def run(
         if on_step:
             on_step(step)
 
-    if res.feasible:
+    if res.feasible and not stopped_by_ai:
         return AgentResult(result=res, steps=steps, applied=applied, proposal=True)
 
     # 組めなかったときに返すのは、緩めたあとの店ではなく**元の店**の矛盾。
@@ -278,6 +306,12 @@ def describe(shop: Shop, agent: AgentResult) -> str:
             "時間内に判断できませんでした。**組めないと分かったわけではありません。**",
             "制限時間を延ばすか、対象の週を短くして試してください。",
         ]
+    elif any(s.action == "ここで止める" for s in agent.steps):
+        lines += [
+            "",
+            "これ以上ゆずるべきでないと判断して止めました。同時に成り立たない条件:",
+        ]
+        lines += [f"  - {x}" for x in group_conflicts(agent.result.conflicts)]
     elif not agent.feasible:
         lines += ["", "試した範囲では組めませんでした。同時に成り立たない条件:"]
         lines += [f"  - {x}" for x in group_conflicts(agent.result.conflicts)]
