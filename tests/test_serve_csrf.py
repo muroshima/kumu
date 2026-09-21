@@ -22,6 +22,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 PORT = 8791
 BASE = f"http://127.0.0.1:{PORT}"
+RESULT = ROOT / "runs" / "result.json"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -42,6 +43,27 @@ def keep_runs():
             p.write_bytes(data)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def built_shift():
+    """画面サーバーはシフトの結果ファイルがないと起動しない。
+
+    その結果ファイルは実行のたびに変わるので追跡していない。つまり
+    クローン直後は存在せず、このテストが丸ごとスキップされる。
+    守るための検査が、他人の環境では走らないことになる。
+    無ければここで作る。
+    """
+    if RESULT.exists():
+        yield
+        return
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "build_shift.py"),
+         "--no-llm", "--json", "runs/result.json"],
+        cwd=str(ROOT), capture_output=True, timeout=600,
+    )
+    yield
+    RESULT.unlink(missing_ok=True)
+
+
 @pytest.fixture(scope="module")
 def server(tmp_path_factory):
     proc = subprocess.Popen(
@@ -58,7 +80,7 @@ def server(tmp_path_factory):
             time.sleep(0.2)
     else:
         proc.kill()
-        pytest.skip("画面サーバーが起動しなかった")
+        pytest.fail("画面サーバーが起動しなかった。スキップにすると守りの検査が黙って消える")
     yield BASE
     proc.terminate()
     proc.wait(timeout=10)
