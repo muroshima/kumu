@@ -15,10 +15,10 @@
     width:1280px; height:720px; position:relative; background:#fff;
     padding:52px 64px 64px; page-break-after:always; overflow:hidden;
   }
-  .kicker { font-size:15px; font-weight:700; color:var(--brand); letter-spacing:.06em; }
-  .title { font-size:44px; font-weight:800; letter-spacing:-.02em; line-height:1.24; margin-top:10px; }
-  .body { margin-top:26px; }
-  .lead2 { font-size:21px; line-height:1.75; color:#334155; }
+  .kicker { font-size:16px; font-weight:700; color:var(--brand); letter-spacing:.06em; }
+  .title { font-size:48px; font-weight:800; letter-spacing:-.02em; line-height:1.24; margin-top:10px; }
+  .body { margin-top:30px; }
+  .lead2 { font-size:24px; line-height:1.8; color:#334155; }
   .em { color:var(--alert); font-weight:700; }
   .foot {
     position:absolute; left:64px; right:64px; bottom:22px;
@@ -26,47 +26,47 @@
     font-size:12px; color:var(--faint); border-top:1px solid var(--line); padding-top:10px;
   }
   /* 表紙 */
-  .cover { height:100%; display:flex; flex-direction:column; justify-content:center; }
+  .cover { height:100%; display:flex; flex-direction:column; justify-content:center; padding-bottom:40px; }
   .pill { display:inline-flex; align-self:flex-start; background:var(--alert-50);
     border:1px solid var(--alert-line); color:var(--alert);
-    font-size:15px; font-weight:700; padding:8px 16px; border-radius:999px; }
-  .logo { font-size:64px; font-weight:800; letter-spacing:-.03em; margin-top:20px; }
+    font-size:17px; font-weight:700; padding:10px 20px; border-radius:999px; }
+  .logo { font-size:76px; font-weight:800; letter-spacing:-.03em; margin-top:20px; }
   .logo span { color:var(--brand); }
-  .lead { font-size:26px; line-height:1.6; margin-top:18px; color:#334155; }
+  .lead { font-size:30px; line-height:1.65; margin-top:24px; color:#334155; }
   .lead b { color:var(--ink); }
-  .meta { font-size:15px; color:var(--sub); margin-top:22px; }
+  .meta { font-size:17px; color:var(--sub); margin-top:30px; }
   /* 汎用パーツ */
-  .cards { display:flex; gap:16px; margin-top:22px; }
+  .cards { display:flex; gap:18px; margin-top:26px; }
   .card { flex:1; background:var(--soft); border:1px solid var(--line);
-    border-radius:14px; padding:18px 20px; }
-  .card b { font-size:19px; display:block; }
-  .card p { font-size:14.5px; color:var(--sub); margin-top:7px; line-height:1.65; }
+    border-radius:14px; padding:22px 24px; }
+  .card b { font-size:21px; display:block; }
+  .card p { font-size:16.5px; color:var(--sub); margin-top:7px; line-height:1.65; }
   .big { font-size:52px; font-weight:800; letter-spacing:-.02em; }
   .big .u { font-size:22px; font-weight:700; color:var(--sub); margin-left:6px; }
-  table { width:100%; border-collapse:collapse; margin-top:20px; font-size:17px; }
-  th, td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); }
-  th { color:var(--sub); font-size:14px; font-weight:700; background:var(--soft); }
+  table { width:100%; border-collapse:collapse; margin-top:24px; font-size:20px; }
+  th, td { text-align:left; padding:16px 16px; border-bottom:1px solid var(--line); }
+  th { color:var(--sub); font-size:16px; font-weight:700; background:var(--soft); }
   td.n { font-variant-numeric:tabular-nums; }
   .hit { background:var(--ok-50); font-weight:800; }
   .bad { color:var(--alert); font-weight:700; }
   .shot { border:1px solid var(--line); border-radius:12px; overflow:hidden;
     box-shadow:0 10px 30px rgba(15,23,42,.10); }
   .shot img { display:block; width:100%; }
-  .shot.cap { max-height:330px; overflow:hidden; }
+  .shot.cap { max-height:390px; overflow:hidden; }
   .flow { display:flex; align-items:center; gap:14px; margin-top:24px; }
-  .node { flex:1; border-radius:14px; padding:16px 18px; text-align:center; }
-  .node b { display:block; font-size:19px; }
-  .node p { font-size:13.5px; color:var(--sub); margin-top:5px; }
+  .node { flex:1; border-radius:14px; padding:22px 20px; text-align:center; }
+  .node b { display:block; font-size:22px; }
+  .node p { font-size:16px; color:var(--sub); margin-top:5px; }
   .n-ai { background:var(--brand-50); border:1px solid var(--brand-100); }
   .n-algo { background:var(--ok-50); border:1px solid #bbf7d0; }
   .n-human { background:var(--warn-50); border:1px solid var(--warn-line); }
   .arrow { color:var(--faint); font-size:26px; }
   .qr { display:flex; gap:26px; margin-top:20px; }
   .qr div { text-align:center; }
-  .qr img { width:132px; height:132px; display:block; }
-  .qr span { font-size:13px; color:var(--sub); display:block; margin-top:7px; }
+  .qr img { width:150px; height:150px; display:block; }
+  .qr span { font-size:15px; color:var(--sub); display:block; margin-top:7px; }
   .two { display:grid; grid-template-columns:1fr 1fr; gap:26px; align-items:start; }
-  .note { font-size:14px; color:var(--sub); margin-top:14px; line-height:1.7; }
+  .note { font-size:16px; color:var(--sub); margin-top:18px; line-height:1.8; }
 </style>
 
 <!-- 1 表紙 -->
@@ -74,7 +74,7 @@
   <div class="cover">
     <div class="pill">AI HACK 2026｜業務を自律化するAIエージェント</div>
     <div class="logo" style="margin-top:22px;">kumu<span>／シフト作成AI</span></div>
-    <div class="lead">シフト作りが<b>数秒</b>で終わる。<br>AIに任せる仕事と、任せない仕事を<b>測って決めました</b>。</div>
+    <div class="lead">シフト作りが<b>数秒</b>で終わる。<br>人が足りない週は、<b>どこをゆずれば組めるか</b>まで返します。</div>
     <div class="meta">飲食店 約55万事業所 × 週2時間 ＝ 年5,700万時間／テスト111件・OrcaRouter 経由</div>
   </div>
   <div class="foot"><span>kumu</span><span>チームZ</span></div>
@@ -91,7 +91,12 @@
       <div class="card"><b>希望がぶつかる</b><p>同じ日に休みたい人が重なる。誰を通すかで揉める</p></div>
       <div class="card"><b>説明できない</b><p>なぜ自分の希望が通らなかったのか、店長も答えられない</p></div>
     </div>
-    <div class="note">事業所数は令和3年 経済センサス。時間と時給は仮置きの見積もりです。</div>
+    <div class="cards" style="margin-top:22px">
+      <div class="card" style="background:var(--alert-50);border-color:var(--alert-line)">
+        <b style="color:var(--alert)">年5,700万時間</b>
+        <p>55万事業所 × 週2時間 × 52週。時給1,500円なら年858億円<br><span style="color:var(--faint)">事業所数は令和3年 経済センサス。時間と時給は仮置き</span></p>
+      </div>
+    </div>
   </div>
   <div class="foot"><span>kumu</span><span>02</span></div>
 </section>
@@ -125,7 +130,13 @@
       <tr><td>gemini-3.5-flash（3回）</td><td class="n">0件 / 0件 / <span class="bad">取り出せず</span></td><td class="n">51〜53%</td><td class="n">$0.224</td></tr>
       <tr class="hit"><td>kumu（アルゴリズム）</td><td class="n">0件</td><td class="n">70%</td><td class="n">$0</td></tr>
     </table>
-    <div class="lead2" style="margin-top:20px;">違反ゼロで組める回もあります。ただし<span class="em">同じ条件で1回目は11件、3回目は1件</span>。守れているかは出してみるまで分かりません。<b>自分に100点を付けた回に、連勤の上限を超えていました。</b></div>
+    <div class="lead2" style="margin-top:16px;font-size:22px;">違反ゼロで組める回もあります。ただし<span class="em">同じ条件で1回目は11件、3回目は1件</span>。守れているかは出してみるまで分かりません。<b>自分に100点を付けた回に、連勤の上限を超えていました。</b></div>
+    <div class="cards" style="margin-top:16px">
+      <div class="card" style="background:var(--ok-50);border-color:#bbf7d0;padding:18px 24px">
+        <b style="color:var(--ok)">だから、並べ方はアルゴリズムに渡した</b>
+        <p>出てくる案は必ず条件を満たし、満たせないときは返さない。費用もゼロで、素直に組める週はAIを1回も呼ばない</p>
+      </div>
+    </div>
   </div>
   <div class="foot"><span>kumu</span><span>04</span></div>
 </section>
@@ -163,8 +174,9 @@
     <div class="cards" style="margin-top:26px;">
       <div class="card"><b>外せないものは渡さない</b><p>連勤や勤務のあいだの休みは候補に入れていない。AIが何を書いても外れない</p></div>
       <div class="card"><b>AIの言い分を信じない</b><p>返ってきた候補は実際に外して解き直す。組めるかは計算が決める</p></div>
-      <div class="card"><b>落ちても止まらない</b><p>壊れた返事も接続失敗も、決め打ちの順に戻って進む。<b>テスト111件</b>で確認</p></div>
+      <div class="card"><b>落ちても止まらない</b><p>壊れた返事も接続失敗も、決め打ちの順に戻って進む</p></div>
     </div>
+    <div class="note" style="margin-top:30px;font-size:18px">この3つは<b>テスト111件</b>で確認しています。候補にないキーを返す、壊れた返事が返る、接続が失敗する。それぞれで止まらないことを検査しました。</div>
   </div>
   <div class="foot"><span>kumu</span><span>06</span></div>
 </section>
@@ -211,7 +223,10 @@
       </div>
     </div>
   </div>
-  <div class="note" style="margin-top:22px">最初にAIが「ここで止める」を入れたときは、1手目でいきなり止めて、誰にも負担のかからない候補を残したままでした。指示を直していまの動きになっています。</div>
+  <div class="cards" style="margin-top:30px">
+    <div class="card"><b>使ったもの</b><p>OR-Tools CP-SAT（並べ方）／ OrcaRouter 経由でモデルを呼ぶ ／ Python ／ 画面は標準ライブラリだけ</p></div>
+    <div class="card"><b>作り直した例</b><p>AIに「ここで止める」を入れた最初の版は、1手目でいきなり止めて、誰にも負担のかからない候補を残したままだった</p></div>
+  </div>
   <div class="foot"><span>kumu</span><span>08</span></div>
 </section>
 
@@ -221,7 +236,7 @@
   <h1 class="title">測ってから、任せる範囲を決めた</h1>
   <div class="body two">
     <div>
-      <div class="lead2">AIの使いどころは、<span class="em">決まりで書けないところに絞ると強い</span>。<br><br>並べ方はアルゴリズムに渡し、AIには人が書いた文章を読むことと、どの決まりをゆずるかの判断を任せました。<br><br>この線引きは、<b>実際に作らせて確かめた</b>結果です。</div>
+      <div class="lead2" style="font-size:26px">AIの使いどころは、<span class="em">決まりで書けないところに絞ると強い</span>。<br><br>並べ方はアルゴリズムに渡し、AIには人が書いた文章を読むことと、どの決まりをゆずるかの判断を任せました。<br><br>この線引きは、<b>実際に作らせて確かめた</b>結果です。</div>
     </div>
     <div>
       <div class="qr">
@@ -229,7 +244,7 @@
         <div><img src="assets/qr_article.png" alt="記事のQR"><span>記事（Zenn）</span></div>
         <div><img src="assets/qr_demo.png" alt="デモ動画のQR"><span>デモ動画</span></div>
       </div>
-      <div class="note">OR-Tools CP-SAT ／ OrcaRouter ／ Python<br>店もスタッフも架空です。</div>
+      <div class="note">店もスタッフも架空です。<br>リポジトリ・記事・デモ動画はQRから見られます。</div>
     </div>
   </div>
   <div class="foot"><span>kumu — シフト作成AI</span><span>09</span></div>
