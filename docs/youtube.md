@@ -1,5 +1,7 @@
 # YouTube 公開用
 
+公開済み: https://youtu.be/E592xZ78ZD4
+
 ## タイトル案
 
 **推奨**
@@ -57,7 +59,7 @@ AIが決めたことは、そのまま実行しません。言ったことが本
 
 リンク
 GitHub: https://github.com/muroshima/kumu
-記事: （Qiita の URL）
+記事: https://zenn.dev/muroshima
 
 AI HACK 2026 提出作品です。店もスタッフも架空で、実在のデータは使っていません。
 

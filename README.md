@@ -36,6 +36,8 @@ uv run python scripts/compare.py \
 
 検査は `src/kumu/verify.py` に分けてあり、どちらのシフトも同じ検査にかけています。
 
+デモ動画: https://youtu.be/E592xZ78ZD4
+
 > AI HACK 2026（第2回）提出作品。テーマ「業務を自律化するAIエージェント」。
 
 ---
