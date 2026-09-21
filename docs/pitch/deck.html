@@ -65,6 +65,11 @@
   .qr div { text-align:center; }
   .qr img { width:150px; height:150px; display:block; }
   .qr span { font-size:15px; color:var(--sub); display:block; margin-top:7px; }
+  .three { display:grid; grid-template-columns:1fr 1fr 1fr; gap:22px; margin-top:28px; }
+  .three figure { margin:0; }
+  .three .shot { box-shadow:0 8px 22px rgba(15,23,42,.10); }
+  .three figcaption { margin-top:16px; font-size:18px; line-height:1.7; color:#334155; }
+  .three figcaption b { display:block; font-size:21px; color:var(--ink); margin-bottom:6px; }
   .two { display:grid; grid-template-columns:1fr 1fr; gap:26px; align-items:start; }
   .note { font-size:16px; color:var(--sub); margin-top:18px; line-height:1.8; }
 </style>
@@ -101,6 +106,29 @@
   <div class="foot"><span>kumu</span><span>02</span></div>
 </section>
 
+<!-- 3 使うとこうなる -->
+<section class="slide">
+  <div class="kicker">使うとこうなる</div>
+  <h1 class="title">出す、組む、困ったら聞く</h1>
+  <div class="body">
+    <div class="three">
+      <figure>
+        <div class="shot"><img src="assets/request.png" alt="希望を出す画面"></div>
+        <figcaption><b>働く人は、なぞるだけ</b>1時間刻みなので「16時から21時まで」も出せます。その場で<b style="display:inline;color:var(--brand)">給料の見込み</b>が出ます。</figcaption>
+      </figure>
+      <figure>
+        <div class="shot"><img src="assets/blocked.png" alt="組めない週の画面"></div>
+        <figcaption><b>組めない週は、理由を返す</b>守れない案を出しません。<b style="display:inline;color:var(--brand)">どれを動かせば組めるか</b>まで出します。</figcaption>
+      </figure>
+      <figure>
+        <div class="shot"><img src="assets/swap.png" alt="交代を頼む画面"></div>
+        <figcaption><b>交代も、その場で分かる</b>誰なら代われるかを解き直して確かめます。<b style="display:inline;color:var(--brand)">電話をかけて回る前に</b>候補が出ます。</figcaption>
+      </figure>
+    </div>
+  </div>
+  <div class="foot"><span>kumu</span><span>03</span></div>
+</section>
+
 <!-- 3 やったこと -->
 <section class="slide">
   <div class="kicker">この作品でやったこと</div>
@@ -116,7 +144,7 @@
     </table>
     <div class="lead2" style="margin-top:20px;">軸は<span class="em">「毎回中身が変わるものはAIに、先に決まりとして書けるものはアルゴリズムに」</span>。並べ方は OR-Tools の CP-SAT が15人×7日を0.24秒で解きます。</div>
   </div>
-  <div class="foot"><span>kumu</span><span>03</span></div>
+  <div class="foot"><span>kumu</span><span>04</span></div>
 </section>
 
 <!-- 4 なぜ分けたか（②根拠） -->
@@ -138,7 +166,7 @@
       </div>
     </div>
   </div>
-  <div class="foot"><span>kumu</span><span>04</span></div>
+  <div class="foot"><span>kumu</span><span>05</span></div>
 </section>
 
 <!-- 5 自律性 -->
@@ -156,7 +184,7 @@
       <div class="note"><b>前の手の結果を見ています。</b>ぶつかる条件が増えたら方向が外れている、と判断して切り替えます。「ここで止める」とも言えます。</div>
     </div>
   </div>
-  <div class="foot"><span>kumu</span><span>05</span></div>
+  <div class="foot"><span>kumu</span><span>06</span></div>
 </section>
 
 <!-- 6 HITL + 堅牢性 -->
@@ -178,7 +206,7 @@
     </div>
     <div class="note" style="margin-top:30px;font-size:18px">この3つは<b>テスト111件</b>で確認しています。候補にないキーを返す、壊れた返事が返る、接続が失敗する。それぞれで止まらないことを検査しました。</div>
   </div>
-  <div class="foot"><span>kumu</span><span>06</span></div>
+  <div class="foot"><span>kumu</span><span>07</span></div>
 </section>
 
 <!-- 7 セキュリティ -->
@@ -202,31 +230,6 @@
       <div class="note"><b>検出は3/10しか捕まえていません。</b>効いているのは検出ではなく、AIが出すのは候補までにして<b>人の確認を通す構造</b>のほうでした。指示文が混ざったカードには「この内容で反映」を出していません。</div>
     </div>
   </div>
-  <div class="foot"><span>kumu</span><span>07</span></div>
-</section>
-
-<!-- 8 正直な現状 -->
-<section class="slide">
-  <div class="kicker">正直なところ</div>
-  <h1 class="title">できていること、できていないこと</h1>
-  <div class="body two">
-    <div>
-      <div class="card" style="background:var(--ok-50);border-color:#bbf7d0">
-        <b>できている</b>
-        <p style="color:#334155">・条件を満たした案しか出さない（満たせなければ返さない）<br>・組めない週は、ぶつかっている条件と直し方を返す<br>・AIが落ちても組める。テスト111件<br>・攻撃10件を防御ON/OFFで実測</p>
-      </div>
-    </div>
-    <div>
-      <div class="card" style="background:var(--warn-50);border-color:var(--warn-line)">
-        <b>できていない</b>
-        <p style="color:#334155">・実在の店で回したことがない<br>・AIの判断の当たり外れは、週をいくつも試していない<br>・認証と複数店舗は未実装<br>・人手と比べた時短は未測定（計算は0.24秒）</p>
-      </div>
-    </div>
-  </div>
-  <div class="cards" style="margin-top:30px">
-    <div class="card"><b>使ったもの</b><p>OR-Tools CP-SAT（並べ方）／ OrcaRouter 経由でモデルを呼ぶ ／ Python ／ 画面は標準ライブラリだけ</p></div>
-    <div class="card"><b>作り直した例</b><p>AIに「ここで止める」を入れた最初の版は、1手目でいきなり止めて、誰にも負担のかからない候補を残したままだった</p></div>
-  </div>
   <div class="foot"><span>kumu</span><span>08</span></div>
 </section>
 
@@ -244,7 +247,11 @@
         <div><img src="assets/qr_article.png" alt="記事のQR"><span>記事（Zenn）</span></div>
         <div><img src="assets/qr_demo.png" alt="デモ動画のQR"><span>デモ動画</span></div>
       </div>
-      <div class="note">店もスタッフも架空です。<br>リポジトリ・記事・デモ動画はQRから見られます。</div>
+      <div class="card" style="margin-top:20px;background:var(--warn-50);border-color:var(--warn-line);padding:16px 20px">
+        <b style="font-size:17px;color:var(--warn)">できていないこと</b>
+        <p style="font-size:15px">実在の店で回していない／AIの判断の当たり外れは十分に試せていない／認証と複数店舗は未実装</p>
+      </div>
+      <div class="note" style="margin-top:12px">OR-Tools CP-SAT ／ OrcaRouter ／ Python。店もスタッフも架空です。</div>
     </div>
   </div>
   <div class="foot"><span>kumu — シフト作成AI</span><span>09</span></div>
