@@ -60,8 +60,11 @@ AIが決めたことは、そのまま実行しません。言ったことが本
 リンク
 GitHub: https://github.com/muroshima/kumu
 記事: https://zenn.dev/muroshima
+（Zenn に公開後、記事の URL に差し替える）
 
-AI HACK 2026 提出作品です。店もスタッフも架空で、実在のデータは使っていません。
+AI HACK 2026（https://aihackathon.jp/）提出作品です。
+モデルの呼び出しは OrcaRouter（https://www.orcarouter.ai/）を使っています。
+店もスタッフも架空で、実在のデータは使っていません。
 
 使ったもの
 OR-Tools CP-SAT / OrcaRouter / Python / Playwright + edge-tts + ffmpeg

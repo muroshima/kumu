@@ -38,7 +38,8 @@ uv run python scripts/compare.py \
 
 デモ動画: https://youtu.be/E592xZ78ZD4
 
-> AI HACK 2026（第2回）提出作品。テーマ「業務を自律化するAIエージェント」。
+> [AI HACK 2026](https://aihackathon.jp/)（第2回）提出作品。テーマ「業務を自律化するAIエージェント」。
+> モデルの呼び出しは [OrcaRouter](https://www.orcarouter.ai/) を使っています。
 
 ---
 
