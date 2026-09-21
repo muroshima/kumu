@@ -116,7 +116,18 @@ def main() -> None:
          "-pix_fmt", "yuv420p", "-movflags", "+faststart",
          "-c:a", "aac", "-b:a", "160k", "-shortest", str(mp4)])
     size = mp4.stat().st_size / 1_000_000
-    print(f"\n出力: {mp4}  {duration(mp4):.1f}s / {size:.1f}MB")
+    total = duration(mp4)
+    print(f"\n出力: {mp4}  {total:.1f}s / {size:.1f}MB")
+
+    # 末尾に無音が残っていないか。シーンの尺を手で計算していると、
+    # 1つずれただけで最後が何十秒も黙ったままになる。実際に11.9秒残した
+    spec = json.loads((HERE / "narration" / f"{name}.ja.json").read_text(encoding="utf-8"))
+    last = spec["cues"][-1]
+    tail = total - (last["at"] + duration(WORK / f"{name}-cue{len(spec['cues']) - 1:02d}.mp3"))
+    if tail > 3.0:
+        print(f"⚠ 末尾に {tail:.1f}秒の無音があります。最後のシーンの尺を詰めてください")
+    else:
+        print(f"末尾の余韻 {tail:.1f}秒")
 
 
 if __name__ == "__main__":
