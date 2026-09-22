@@ -3,6 +3,10 @@
 スタッフ15人、1週間分のシフトが**数秒**で組み上がります。
 法律も契約も希望も満たした案だけを出し、人が足りない週は、どこをゆずれば組めるかまで示します。
 
+日本には飲食店が約55万事業所あり、その1店ずつで毎週シフトが手で組まれています。
+1店あたり週2時間として年5,700万時間。そこを数秒に変えられたら効くはず、というのが出発点です
+（事業所数は令和3年 経済センサス。時間は仮置きの見積もりです）。
+
 **AI に何を任せ、何を任せないかは、測って決めました。**
 
 シフト作りには、規則で書けない仕事と、計算で決まる仕事が混ざっています。前者は AI に任せ、後者は渡しません。どこに線を引くかを、勘ではなく測定で決めたのがこの作品です。
@@ -36,7 +40,9 @@ uv run python scripts/compare.py \
 
 検査は `src/kumu/verify.py` に分けてあり、どちらのシフトも同じ検査にかけています。
 
-デモ動画: https://youtu.be/E592xZ78ZD4
+- デモ動画: https://youtu.be/E592xZ78ZD4
+- 記事: https://zenn.dev/muroshima/articles/eb671df7b834f7
+- 登壇資料: `docs/pitch/`（スライドとカンペ）
 
 > [AI HACK 2026](https://aihackathon.jp/)（第2回）提出作品。テーマ「業務を自律化するAIエージェント」。
 > モデルの呼び出しは [OrcaRouter](https://www.orcarouter.ai/) を使っています。
@@ -272,28 +278,37 @@ uv run python scripts/build_shift.py --impossible     # 人が足りない週で
 uv run python scripts/build_shift.py --no-llm         # 希望欄の読み取りを飛ばす
 uv run python scripts/build_shift.py --json runs/result.json   # 画面用に保存
 uv run python scripts/serve.py                        # 画面
-uv run pytest
+uv run pytest        # 111件
 ```
 
 ## 構成
 
 ```
 src/kumu/
-  model.py      守らなければならないことと、できれば通したいことの定義
-  solver.py     CP-SAT で解く。矛盾の特定と既約化もここ
-  agent.py      組めなかったときに手を打つループ
-  advisor.py    どの条件からゆずるかを AI に決めさせる
-  explain.py    解き直して「なぜ」に答える
-  swap.py       交代できる人を探す
-  trust.py      信頼ポイント
-  translate.py  自由文を制約の候補にする。モデルの担当範囲はここだけ
-  sanitize.py   希望欄に混ざる指示文の検出と無害化
-  report.py     画面が読む形にまとめる
-  llm.py        呼び出しの共通層。キャッシュ・使用量の記録・上限
-  orca.py       OrcaRouter への接続。キーは Keychain から
+  model.py        守らなければならないことと、できれば通したいことの定義
+  solver.py       CP-SAT で解く。矛盾の特定と既約化もここ
+  agent.py        組めなかったときに手を打つループ
+  advisor.py      どの条件からゆずるかを AI に決めさせる
+  explain.py      解き直して「なぜ」に答える
+  swap.py         交代できる人を探す
+  trust.py        信頼ポイント
+  translate.py    自由文を制約の候補にする
+  sanitize.py     希望欄に混ざる指示文の検出と無害化
+  confidence.py   確信度の読み取り。NaN と bool をここで潰す
+  keys.py         確認済みかどうかを覚えるための識別子
+  inbox.py        画面から出された希望を取り込む。保存値を信じない判定もここ
+  workspace.py    その週の店を組み立てる。解き直すときも同じものを使う
+  report.py       画面が読む形にまとめる
+  verify.py       出来上がったシフトを検査する。比較のときは両方これにかける
+  llm_baseline.py 比較用。AI にシフトを組ませる
+  llm.py          呼び出しの共通層。キャッシュ・使用量の記録・上限
+  orca.py         OrcaRouter への接続。キーは Keychain から
+  dummy.py        架空の店とスタッフ
 scripts/
   build_shift.py  希望を読んでシフトを組むまでを通す
   serve.py        画面
+  compare.py      AI に組ませた場合との比較
+  attack.py       防御あり／なしで攻撃を通す
 ```
 
 ## OrcaRouter をどう使っているか
